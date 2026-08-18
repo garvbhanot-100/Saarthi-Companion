@@ -1,0 +1,548 @@
+Build a complete, functional application called "Saarthi AI".
+
+IMPORTANT:
+Do not create a simple static UI mockup.
+I want a WORKING application with functional navigation, search, authentication-ready structure, and an AI chat assistant.
+
+The application should be designed so that we can continue editing and improving it later.
+
+==================================================
+1. PROJECT PURPOSE
+==================================================
+
+Saarthi AI is an AI-powered assistant that helps Indian users understand government services, schemes, eligibility requirements, documents, and application procedures in simple language.
+
+The app should feel trustworthy, simple, modern, beginner-friendly, and customer-focused.
+
+The user should be able to:
+
+- Ask Saarthi AI questions
+- Search for government services and schemes
+- Get useful results
+- Open/view result details
+- Ask follow-up questions
+- Understand eligibility requirements
+- Understand required documents
+- Get step-by-step guidance
+- Navigate easily on a mobile phone
+
+Do NOT invent government information.
+
+Government-related information must be based on reliable/official sources whenever possible.
+
+Clearly show the source of government information.
+
+Prefer official Indian government domains such as:
+- gov.in
+- mygov.in
+- india.gov.in
+- uidai.gov.in
+- incometax.gov.in
+- epfindia.gov.in
+- pmkisan.gov.in
+- other appropriate official government domains
+
+If information cannot be verified, clearly tell the user that it could not be verified instead of making something up.
+
+==================================================
+2. TECHNOLOGY
+==================================================
+
+Choose a stable and beginner-friendly full-stack technology stack that works well on Replit.
+
+Prefer:
+
+Frontend:
+- React
+- TypeScript
+- modern CSS
+- responsive design
+
+Backend:
+- Node.js
+- Express or an appropriate Replit-supported backend
+
+Database:
+- Use a simple database such as PostgreSQL if needed.
+- Keep the database structure clean and easy to understand.
+
+Make the application responsive for:
+- Android phones
+- tablets
+- desktop browsers
+
+The application should also be PWA-ready so it can be installed on a phone like an app.
+
+Do not make the UI dependent on desktop-only features.
+
+==================================================
+3. MAIN WELCOME PAGE
+==================================================
+
+Create a beautiful welcome page for Saarthi AI.
+
+The design should be inspired by modern AI/service applications but should NOT copy another company's design.
+
+Use:
+
+Saarthi AI
+
+Tagline:
+
+"Your smart guide to government services and schemes, made simple."
+
+Include:
+
+- Saarthi AI logo/brand area
+- Short introduction
+- "Find Services"
+- "Check Eligibility"
+- "Get Guidance"
+- "Get Started" button
+- "I already have an account" button
+- Privacy message
+
+The design should be clean and minimal.
+
+Use a professional blue/indigo color scheme with lots of white/light space.
+
+==================================================
+4. AI CHAT ASSISTANT
+==================================================
+
+This is one of the MOST IMPORTANT parts.
+
+Create a fully functional AI chat page.
+
+The interface should feel similar to a modern AI chatbot.
+
+At the bottom there must be a large message input box.
+
+Example:
+
+------------------------------------
+| Ask Saarthi anything...         |
+|                                  |
+|                         [Send]   |
+------------------------------------
+
+The user can type questions such as:
+
+"What government schemes are available for students?"
+
+"How can I apply for a PAN card?"
+
+"What documents are required for this scheme?"
+
+"Am I eligible for PM-KISAN?"
+
+"How can I check my Aadhaar status?"
+
+The assistant should return a conversational response.
+
+The chat should support:
+
+- User messages
+- AI responses
+- Loading state
+- Error state
+- Send button
+- Enter-to-send
+- Multi-line input
+- Scrollable conversation
+- Clear chat
+- New chat
+- Follow-up questions
+
+The chat UI should look polished on mobile.
+
+==================================================
+5. AI API
+==================================================
+
+Do NOT hard-code API keys.
+
+Use environment variables / Replit Secrets.
+
+Create a clean AI service layer such as:
+
+server/services/ai.ts
+
+The code should be designed so the AI provider can easily be changed later.
+
+For example:
+
+AI_API_KEY
+
+AI_MODEL
+
+If an API key is not configured, display a friendly setup message rather than crashing.
+
+Do not expose API keys to the frontend.
+
+Use server-side API calls.
+
+==================================================
+6. SEARCH FUNCTIONALITY
+==================================================
+
+Create a real search page.
+
+At the top:
+
+"Search government services and schemes"
+
+with a search box:
+
+[ Search services, schemes, documents... ]
+
+When the user searches something, actually perform a search.
+
+Examples:
+
+- scholarships
+- Aadhaar
+- PAN card
+- PM-KISAN
+- pension
+- education schemes
+- business schemes
+- health schemes
+
+Display results as cards.
+
+Each result should contain:
+
+- Scheme/service name
+- Short description
+- Category
+- Eligibility summary
+- Required documents summary
+- Government source
+- Official website/source link
+- "View Details" button
+
+Do not show fake search results.
+
+If a real search provider/API is required, create the integration using an environment variable and provide clear setup instructions.
+
+Keep the search service modular so we can replace it later.
+
+==================================================
+7. GOVERNMENT INFORMATION SAFETY
+==================================================
+
+This is extremely important.
+
+Saarthi AI must NEVER:
+
+- Invent a government scheme
+- Invent eligibility requirements
+- Invent application fees
+- Invent deadlines
+- Invent official websites
+- Pretend that unverified information is official
+- Claim that an application was submitted when it was not
+- Claim that a government service is available without verification
+
+For government information:
+
+1. Prefer official sources.
+2. Show the source.
+3. Include "Last verified" where possible.
+4. If information is uncertain or unavailable, say so.
+5. Never expose private user information.
+
+==================================================
+8. SIGNUP PAGE
+==================================================
+
+Create a functional signup page.
+
+Fields:
+
+- Full name
+- Email
+- Password
+- Confirm password
+
+Include:
+
+"Continue with Google"
+
+button.
+
+The Google signup/login architecture should be implemented properly using a secure authentication approach supported by Replit.
+
+Do NOT fake Google authentication.
+
+If Google OAuth credentials are required, create the required environment variables and provide setup instructions.
+
+==================================================
+9. LOGIN PAGE
+==================================================
+
+Create a login page with:
+
+- Email
+- Password
+- Login button
+- Continue with Google
+- Forgot password
+- Create account
+
+Authentication should be structured properly.
+
+Do not store passwords in plain text.
+
+Use secure authentication practices.
+
+==================================================
+10. USER ACCOUNT
+==================================================
+
+After authentication, users should have a profile/account area.
+
+Include:
+
+- Name
+- Email
+- Profile
+- Chat history
+- Saved services
+- Saved schemes
+
+Keep each user's data isolated.
+
+One user must NEVER be able to see another user's:
+
+- chats
+- profile
+- saved items
+- personal information
+
+==================================================
+11. CHAT HISTORY
+==================================================
+
+If the user is logged in:
+
+Save conversations to the database.
+
+Show:
+
+"Recent chats"
+
+The user can:
+
+- Open an old conversation
+- Start a new conversation
+- Delete a conversation
+
+All chat data must belong to the authenticated user.
+
+==================================================
+12. SAVED SERVICES
+==================================================
+
+Allow users to save/bookmark government services and schemes.
+
+Create a Saved section.
+
+Users can:
+
+- Save a service
+- Remove a saved service
+- View saved services
+
+Again, user data must remain private and isolated.
+
+==================================================
+13. NAVIGATION
+==================================================
+
+Create simple mobile-friendly navigation.
+
+Main sections:
+
+Home
+Search
+Ask Saarthi
+Saved
+Profile
+
+Use a bottom navigation bar on mobile.
+
+On desktop, use an appropriate sidebar/top navigation.
+
+==================================================
+14. SEARCH + AI CONNECTION
+==================================================
+
+The AI should be able to use search results as context.
+
+Example:
+
+User:
+
+"What scholarship schemes are available for students?"
+
+The system should:
+
+1. Search relevant government information.
+2. Retrieve reliable results.
+3. Give the relevant information to the AI.
+4. Generate a simple explanation.
+5. Show sources.
+
+Clearly distinguish between:
+
+"AI explanation"
+
+and
+
+"Official sources"
+
+Do not present AI-generated information as if it were directly written by the government.
+
+==================================================
+15. ERROR HANDLING
+==================================================
+
+The application must not crash when:
+
+- AI API is unavailable
+- Search API is unavailable
+- Internet request fails
+- Database fails
+- User enters an empty query
+- Invalid login occurs
+
+Show friendly error messages.
+
+==================================================
+16. LOADING STATES
+==================================================
+
+Add proper loading indicators for:
+
+- AI response
+- Search
+- Login
+- Signup
+- Saving services
+- Loading chat history
+
+==================================================
+17. DESIGN
+==================================================
+
+Make the design:
+
+- Minimal
+- Professional
+- Modern
+- Mobile-first
+- Friendly
+- Easy for non-technical users
+- Accessible
+- Fast
+
+Primary color:
+
+Indigo/blue
+
+Use rounded cards and buttons but don't overdo them.
+
+Avoid excessive gradients and unnecessary animations.
+
+The application should NOT look like an obvious AI-generated template.
+
+==================================================
+18. PROJECT STRUCTURE
+==================================================
+
+Keep the code organized.
+
+For example:
+
+client/
+  components/
+  pages/
+  services/
+  hooks/
+  styles/
+
+server/
+  routes/
+  services/
+  middleware/
+  db/
+
+shared/
+
+Use reusable components.
+
+Do not put the entire application into one huge file.
+
+==================================================
+19. README
+==================================================
+
+Create a clear README explaining:
+
+1. How the application works
+2. How to run it
+3. Required environment variables
+4. How to configure the AI API
+5. How to configure search
+6. How to configure Google OAuth
+7. How the database works
+8. How to deploy it
+9. How to install it as a PWA on Android
+
+==================================================
+20. IMPORTANT DEVELOPMENT RULE
+==================================================
+
+Build the application in a way that I can understand and edit later.
+
+Do not unnecessarily over-engineer it.
+
+Use clear variable names.
+
+Add short comments where something is complicated.
+
+Do not generate fake backend functionality.
+
+If a feature requires an API key or external service, implement the real integration structure and clearly tell me what I need to configure.
+
+==================================================
+21. FIRST PRIORITY
+==================================================
+
+First make sure these work completely:
+
+1. Welcome page
+2. Navigation
+3. AI chat interface
+4. AI message sending
+5. Search interface
+6. Search results
+7. Signup
+8. Login
+9. User session
+10. Responsive mobile UI
+
+Then add:
+
+11. Chat history
+12. Saved services
+13. Profile
+14. PWA support
+
+Before finishing, test the application and fix build/runtime errors.
+
+Do not stop after creating the UI.
+
+I want a WORKING Saarthi AI application that we can continue developing tomorrow.
