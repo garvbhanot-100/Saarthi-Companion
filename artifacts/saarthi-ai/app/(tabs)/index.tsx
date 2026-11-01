@@ -1,3 +1,553 @@
-import{Feather}from'@expo/vector-icons';import{LinearGradient}from'expo-linear-gradient';import{router}from'expo-router';import React from'react';import{Pressable,ScrollView,StyleSheet,Text,View}from'react-native';import{useSafeAreaInsets}from'react-native-safe-area-context';import{LogoMark,PrimaryButton,SectionHeading}from'@/components/UI';import{services}from'@/data/services';import{useSaarthi}from'@/context/SaarthiContext';import{useColors}from'@/hooks/useColors';
-export default function Home(){const c=useColors(),i=useSafeAreaInsets(),{user,chats}=useSaarthi();const first=user?.name.split(' ')[0];return <ScrollView style={{flex:1,backgroundColor:c.background}} contentContainerStyle={{paddingTop:i.top+13,paddingBottom:i.bottom+95,paddingHorizontal:20}} showsVerticalScrollIndicator={false}><View style={x.header}><LogoMark/><Pressable onPress={()=>router.push(user?'/profile':'/auth')} style={[x.avatar,{backgroundColor:c.primarySoft}]}>{user?<Text style={[x.avatarText,{color:c.primary}]}>{user.name[0].toUpperCase()}</Text>:<Feather name="user" size={18} color={c.primary}/>}</Pressable></View><Text style={[x.greeting,{color:c.mutedForeground}]}>{first?'Good to see you, '+first:'A simpler way to find your way'}</Text><Text style={[x.title,{color:c.foreground}]}>Government help,<Text style={{color:c.primary}}> made simple.</Text></Text><Text style={[x.body,{color:c.mutedForeground}]}>Ask questions, find trusted services, and understand your next step without the jargon.</Text><LinearGradient colors={[c.indigo,c.primary]} style={x.hero}><View style={{flex:1}}><Text style={x.heroEye}>YOUR DIGITAL GUIDE</Text><Text style={x.heroTitle}>What do you need help with today?</Text><Text style={x.heroBody}>Official information in simple language.</Text></View><View style={x.compass}><Feather name="compass" size={29} color={c.primaryForeground}/></View></LinearGradient><View style={x.actions}><View style={{flex:1}}><PrimaryButton title="Ask Saarthi" icon="message-circle" onPress={()=>router.push('/ask')}/></View><Pressable onPress={()=>router.push('/search')} style={[x.searchBtn,{backgroundColor:c.card,borderColor:c.border}]}><Feather name="search" size={20} color={c.primary}/></Pressable></View><SectionHeading eyebrow="Explore" title="Start with a service"/><View style={x.grid}>{[{t:'Find services',s:'Search official schemes',i:'search',r:'/search'},{t:'Check eligibility',s:'Understand requirements',i:'check-circle',r:'/ask'},{t:'Get guidance',s:'Ask in simple language',i:'compass',r:'/ask'}].map(item=><Pressable key={item.t} onPress={()=>router.push(item.r as any)} style={[x.explore,{backgroundColor:c.card,borderColor:c.border}]}><View style={[x.exploreIcon,{backgroundColor:c.primarySoft}]}><Feather name={item.i as any} size={17} color={c.primary}/></View><Text style={[x.exploreTitle,{color:c.foreground}]}>{item.t}</Text><Text style={[x.exploreSub,{color:c.mutedForeground}]}>{item.s}</Text></Pressable>)}</View><SectionHeading eyebrow="Trusted starting points" title="Popular right now" action="See all" onAction={()=>router.push('/search')}/>{services.slice(0,3).map(s=><Pressable key={s.id} onPress={()=>router.push({pathname:'/service/[id]',params:{id:s.id}})} style={[x.service,{backgroundColor:c.card,borderColor:c.border}]}><View style={[x.serviceIcon,{backgroundColor:c.primarySoft}]}><Feather name="shield" size={16} color={c.primary}/></View><View style={{flex:1}}><Text style={[x.serviceTitle,{color:c.foreground}]}>{s.name}</Text><Text style={[x.serviceSub,{color:c.mutedForeground}]} numberOfLines={1}>{s.description}</Text></View><Feather name="chevron-right" size={17} color={c.mutedForeground}/></Pressable>)}{chats.length>0&&<><SectionHeading eyebrow="Your space" title="Continue a conversation" action="View all" onAction={()=>router.push('/profile')}/><Pressable onPress={()=>router.push('/ask')} style={[x.service,{backgroundColor:c.card,borderColor:c.border}]}><View style={[x.serviceIcon,{backgroundColor:c.successSoft}]}><Feather name="message-square" size={16} color={c.success}/></View><View style={{flex:1}}><Text style={[x.serviceTitle,{color:c.foreground}]}>{chats[0].title}</Text><Text style={[x.serviceSub,{color:c.mutedForeground}]}>{chats[0].messages.length} messages saved on this device</Text></View></Pressable></>}<View style={x.privacy}><Feather name="shield" size={14} color={c.success}/><Text style={[x.privacyText,{color:c.mutedForeground}]}>Official sources are shown whenever available. Saarthi does not submit applications for you.</Text></View></ScrollView>}
-const x=StyleSheet.create({header:{flexDirection:'row',justifyContent:'space-between',alignItems:'center'},avatar:{width:40,height:40,borderRadius:14,alignItems:'center',justifyContent:'center'},avatarText:{fontFamily:'Inter_700Bold',fontSize:16},greeting:{fontFamily:'Inter_500Medium',fontSize:13,marginTop:25},title:{fontFamily:'Inter_700Bold',fontSize:34,lineHeight:39,letterSpacing:-1.2,marginTop:7},body:{fontFamily:'Inter_400Regular',fontSize:15,lineHeight:23,marginTop:12},hero:{minHeight:181,borderRadius:24,padding:22,marginTop:22,flexDirection:'row'},heroEye:{color:'rgba(255,255,255,.68)',fontFamily:'Inter_700Bold',fontSize:10,letterSpacing:1.1},heroTitle:{color:'#fff',fontFamily:'Inter_700Bold',fontSize:24,lineHeight:29,marginTop:11,maxWidth:240},heroBody:{color:'rgba(255,255,255,.76)',fontFamily:'Inter_400Regular',fontSize:12,marginTop:11},compass:{width:54,height:54,borderRadius:18,backgroundColor:'rgba(255,255,255,.17)',alignItems:'center',justifyContent:'center'},actions:{flexDirection:'row',gap:10,marginTop:14},searchBtn:{width:54,minHeight:53,borderRadius:16,borderWidth:1,alignItems:'center',justifyContent:'center'},grid:{flexDirection:'row',gap:9,marginBottom:28},explore:{flex:1,minHeight:128,borderRadius:17,borderWidth:1,padding:12},exploreIcon:{width:31,height:31,borderRadius:10,alignItems:'center',justifyContent:'center',marginBottom:12},exploreTitle:{fontFamily:'Inter_700Bold',fontSize:12},exploreSub:{fontFamily:'Inter_400Regular',fontSize:10,lineHeight:14,marginTop:5},service:{minHeight:70,borderWidth:1,borderRadius:17,padding:12,flexDirection:'row',alignItems:'center',gap:11,marginBottom:10},serviceIcon:{width:37,height:37,borderRadius:12,alignItems:'center',justifyContent:'center'},serviceTitle:{fontFamily:'Inter_700Bold',fontSize:13},serviceSub:{fontFamily:'Inter_400Regular',fontSize:11,marginTop:3},privacy:{flexDirection:'row',gap:8,marginTop:20,paddingHorizontal:5},privacyText:{fontFamily:'Inter_400Regular',fontSize:11,lineHeight:16,flex:1}});
+import { Feather } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import { router } from "expo-router";
+import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { PrimaryButton, SectionHeading } from "@/components/UI";
+import { FadeInView, MotionPressable } from "@/components/Motion";
+import React from "react";
+import { useLanguage } from "@/context/LanguagesContext";
+import { useSaarthi } from "@/context/SaarthiContext";
+import { services } from "@/data/services";
+import { getHomeServiceText } from "@/data/serviceTransalations";
+import { useColors } from "@/hooks/useColors";
+
+export default function Home() {
+  const { t, language, hydrated } = useLanguage();
+  const c = useColors();
+  const insets = useSafeAreaInsets();
+  const { user, chats } = useSaarthi();
+
+  if (!hydrated) {
+    return null;
+  }
+
+  const getServiceImage = (id: string) => {
+    switch (id) {
+      case "aadhaar-update":
+        return require("../../assets/images/images-2/aadhar-card.png");
+      case "pan-card":
+        return require("../../assets/images/images-2/Pan-Card.png");
+      case "pm-kisan":
+        return require("../../assets/images/images-2/pm-kisan.png");
+      default:
+        return null;
+    }
+  };
+
+  const popularServices = services.slice(0, 3);
+
+  return (
+    <FadeInView style={{ flex: 1 }}>
+      <ScrollView
+        key={language}
+        style={{ flex: 1, backgroundColor: c.background }}
+        contentContainerStyle={{
+          paddingTop: insets.top + 13,
+          paddingBottom: insets.bottom + 95,
+          paddingHorizontal: 20,
+        }}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <View style={[styles.logo, { backgroundColor: c.primary }]}>
+            <Image
+              source={require("../../assets/images/images-2/Saarthi-AI Images.jpeg")}
+              style={{ width: 28, height: 28 }}
+              resizeMode="contain"
+            />
+          </View>
+
+          <MotionPressable
+            accessibilityRole="button"
+            accessibilityLabel={t("profile")}
+            onPress={() => router.push(user ? "/profile" : "/auth")}
+            style={[styles.avatar, { backgroundColor: c.primarySoft }]}
+          >
+            {user ? (
+              <Text style={[styles.avatarText, { color: c.primary }]}>
+                {user.name?.[0]?.toUpperCase() ?? "U"}
+              </Text>
+            ) : (
+              <Feather name="user" size={18} color={c.primary} />
+            )}
+          </MotionPressable>
+        </View>
+
+        {/* Welcome */}
+        <Text style={[styles.greeting, { color: c.mutedForeground }]}>
+          {t("greeting")}
+        </Text>
+
+        <Text style={[styles.title, { color: c.foreground }]}>
+          {t("homeTitle")}
+          <Text style={{ color: c.primary }}>{t("homeTitleHighlight")}</Text>
+        </Text>
+
+        <Text style={[styles.body, { color: c.mutedForeground }]}>
+          {t("homeDescription")}
+        </Text>
+
+        {/* Home tagline */}
+        <View
+          style={[
+            styles.taglineContainer,
+            {
+              backgroundColor: c.card,
+              borderColor: c.border,
+            },
+          ]}
+        >
+          <Text style={[styles.tagline, { color: c.foreground }]}>
+            Government Services.
+            {"\n"}
+            Simplified for You.
+          </Text>
+
+          <Text style={[styles.taglineSubtitle, { color: c.mutedForeground }]}>
+            Simple. Accessible. For Everyone.
+          </Text>
+        </View>
+
+        {/* Hero */}
+        <LinearGradient colors={[c.indigo, c.primary]} style={styles.hero}>
+          <View style={styles.heroContent}>
+            <Text style={styles.heroEyebrow}>{t("heroEyebrow")}</Text>
+
+            <Text style={styles.heroTitle}>{t("heroTitle")}</Text>
+
+            <Text style={styles.heroBody}>{t("heroDescription")}</Text>
+          </View>
+
+          <View style={styles.compass}>
+            <Image
+              source={require("../../assets/images/images-2/Saarthi-AI Images.jpeg")}
+              style={{ width: 38, height: 38, borderRadius: 12 }}
+              resizeMode="contain"
+            />
+          </View>
+        </LinearGradient>
+
+        {/* Main actions */}
+        <View style={styles.actions}>
+          <View style={{ flex: 1 }}>
+            <PrimaryButton
+              title={t("askSaarthi")}
+              icon="message-circle"
+              onPress={() => router.push("/ask")}
+            />
+          </View>
+
+          <MotionPressable
+            accessibilityRole="button"
+            accessibilityLabel={t("search")}
+            onPress={() => router.push("/search")}
+            style={[
+              styles.searchButton,
+              { backgroundColor: c.card, borderColor: c.border },
+            ]}
+          >
+            <Feather name="search" size={20} color={c.primary} />
+          </MotionPressable>
+        </View>
+
+        {/* Explore services */}
+        <SectionHeading
+          eyebrow={t("exploreServices")}
+          title={t("startWithService")}
+        />
+
+        <View style={styles.grid}>
+          {[
+            {
+              title: t("findServices"),
+              subtitle: t("searchOfficialSchemes"),
+              icon: "search",
+              route: "/search",
+            },
+            {
+              title: t("checkEligibility"),
+              subtitle: t("understandRequirements"),
+              icon: "check-circle",
+              route: "/ask",
+            },
+            {
+              title: t("getGuidance"),
+              subtitle: t("askInSimpleLanguage"),
+              icon: "compass",
+              route: "/ask",
+            },
+          ].map((item) => (
+            <MotionPressable
+              key={item.title}
+              accessibilityRole="button"
+              accessibilityLabel={`${item.title}. ${item.subtitle}`}
+              onPress={() => router.push(item.route as "/search" | "/ask")}
+              style={[
+                styles.exploreCard,
+                { backgroundColor: c.card, borderColor: c.border },
+              ]}
+            >
+              <View
+                style={[styles.exploreIcon, { backgroundColor: c.primarySoft }]}
+              >
+                <Feather
+                  name={item.icon as "search" | "check-circle" | "compass"}
+                  size={17}
+                  color={c.primary}
+                />
+              </View>
+
+              <Text style={[styles.exploreTitle, { color: c.foreground }]}>
+                {item.title}
+              </Text>
+
+              <Text
+                style={[styles.exploreSubtitle, { color: c.mutedForeground }]}
+              >
+                {item.subtitle}
+              </Text>
+            </MotionPressable>
+          ))}
+        </View>
+
+        {/* Popular services */}
+        <SectionHeading
+          eyebrow={t("trustedStartingPoints")}
+          title={t("popularRightNow")}
+          action={t("seeAll")}
+          onAction={() => router.push("/search")}
+        />
+
+        {popularServices.map((service) => {
+          const serviceName = getHomeServiceText(service.id, language, "name");
+          const serviceDescription = getHomeServiceText(
+            service.id,
+            language,
+            "description",
+          );
+          const serviceImage = getServiceImage(service.id);
+
+          return (
+            <MotionPressable
+              key={service.id}
+              accessibilityRole="button"
+              accessibilityLabel={`${serviceName}. ${t("viewDetails")}`}
+              onPress={() =>
+                router.push({
+                  pathname: "/service/[id]",
+                  params: { id: service.id },
+                })
+              }
+              style={[
+                styles.serviceCard,
+                { backgroundColor: c.card, borderColor: c.border },
+              ]}
+            >
+              <View
+                style={[styles.serviceIcon, { backgroundColor: c.primarySoft }]}
+              >
+                {serviceImage ? (
+                  <Image
+                    source={serviceImage}
+                    style={styles.serviceImage}
+                    resizeMode="contain"
+                  />
+                ) : (
+                  <Feather name="shield" size={16} color={c.primary} />
+                )}
+              </View>
+
+              <View style={styles.serviceContent}>
+                <Text style={[styles.serviceTitle, { color: c.foreground }]}>
+                  {serviceName}
+                </Text>
+
+                <Text
+                  style={[styles.serviceSubtitle, { color: c.mutedForeground }]}
+                  numberOfLines={2}
+                >
+                  {serviceDescription}
+                </Text>
+              </View>
+
+              <Feather
+                name="chevron-right"
+                size={17}
+                color={c.mutedForeground}
+              />
+            </MotionPressable>
+          );
+        })}
+
+        {/* Recent conversation */}
+        {chats.length > 0 && (
+          <>
+            <SectionHeading
+              eyebrow={t("yourSpace")}
+              title={t("continueConversation")}
+              action={t("viewAll")}
+              onAction={() => router.push("/profile")}
+            />
+
+            <MotionPressable
+              accessibilityRole="button"
+              accessibilityLabel={t("continueConversation")}
+              onPress={() => router.push("/ask")}
+              style={[
+                styles.serviceCard,
+                { backgroundColor: c.card, borderColor: c.border },
+              ]}
+            >
+              <View
+                style={[styles.serviceIcon, { backgroundColor: c.successSoft }]}
+              >
+                <Feather name="message-square" size={16} color={c.success} />
+              </View>
+
+              <View style={styles.serviceContent}>
+                <Text style={[styles.serviceTitle, { color: c.foreground }]}>
+                  {chats[0].title}
+                </Text>
+
+                <Text
+                  style={[styles.serviceSubtitle, { color: c.mutedForeground }]}
+                >
+                  {chats[0].messages.length} {t("messagesSaved")}
+                </Text>
+              </View>
+            </MotionPressable>
+          </>
+        )}
+
+        {/* Privacy notice */}
+        <View style={styles.privacy}>
+          <Feather name="shield" size={14} color={c.success} />
+
+          <Text style={[styles.privacyText, { color: c.mutedForeground }]}>
+            {t("privacyNotice")}
+          </Text>
+        </View>
+      </ScrollView>
+    </FadeInView>
+  );
+}
+
+const styles = StyleSheet.create({
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  logo: {
+    width: 44,
+    height: 44,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 20,
+  },
+  greeting: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 13,
+    marginTop: 19,
+  },
+  title: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 32,
+    lineHeight: 40,
+    letterSpacing: -0.7,
+    marginTop: 7,
+    flexWrap: "wrap",
+  },
+  body: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+    lineHeight: 22,
+    marginTop: 9,
+  },
+
+  taglineContainer: {
+    marginTop: 18,
+    padding: 16,
+    borderRadius: 18,
+    borderWidth: 1,
+  },
+
+  tagline: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 21,
+    lineHeight: 29,
+    letterSpacing: -0.4,
+  },
+
+  taglineSubtitle: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 8,
+  },
+
+  hero: {
+    minHeight: 166,
+    borderRadius: 22,
+    padding: 20,
+    marginTop: 20,
+    flexDirection: "row",
+    gap: 12,
+    shadowColor: "#173979",
+    shadowOpacity: 0.16,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
+  },
+  heroContent: {
+    flex: 1,
+  },
+  heroEyebrow: {
+    color: "rgba(255,255,255,.8)",
+    fontFamily: "Inter_700Bold",
+    fontSize: 10,
+    letterSpacing: 1,
+  },
+  heroTitle: {
+    color: "#fff",
+    fontFamily: "Inter_700Bold",
+    fontSize: 22,
+    lineHeight: 29,
+    marginTop: 9,
+    flexShrink: 1,
+  },
+  heroBody: {
+    color: "rgba(255,255,255,.85)",
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 11,
+  },
+  compass: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,.17)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  actions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 16,
+  },
+  searchButton: {
+    width: 54,
+    minHeight: 53,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  grid: {
+    flexDirection: "row",
+    gap: 9,
+    marginBottom: 26,
+  },
+  exploreCard: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 144,
+    borderRadius: 17,
+    borderWidth: 1,
+    padding: 11,
+    shadowColor: "#17304f",
+    shadowOpacity: 0.045,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 1,
+  },
+  exploreIcon: {
+    width: 31,
+    height: 31,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 10,
+  },
+  exploreTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 12,
+    lineHeight: 17,
+    flexShrink: 1,
+  },
+  exploreSubtitle: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 5,
+    flexShrink: 1,
+  },
+  serviceCard: {
+    minHeight: 74,
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+    marginBottom: 10,
+    shadowColor: "#17304f",
+    shadowOpacity: 0.045,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 1,
+  },
+  serviceIcon: {
+    width: 37,
+    height: 37,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  serviceImage: {
+    width: 30,
+    height: 30,
+  },
+  serviceContent: {
+    flex: 1,
+    minWidth: 0,
+  },
+  serviceTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  serviceSubtitle: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 3,
+  },
+  privacy: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 20,
+    paddingHorizontal: 5,
+  },
+  privacyText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+    lineHeight: 16,
+    flex: 1,
+  },
+});

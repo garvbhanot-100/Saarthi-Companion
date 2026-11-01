@@ -1,5 +1,574 @@
-import{Feather}from'@expo/vector-icons';import{router}from'expo-router';import React,{useEffect,useMemo,useRef,useState}from'react';import{ActivityIndicator,FlatList,Linking,Pressable,StyleSheet,Text,TextInput,View}from'react-native';import{KeyboardAvoidingView}from'react-native-keyboard-controller';import{useSafeAreaInsets}from'react-native-safe-area-context';import{IconButton}from'@/components/UI';import{ChatMessage,useSaarthi}from'@/context/SaarthiContext';import{getAssistantReply}from'@/services/assistant';import{useColors}from'@/hooks/useColors';
-function Bubble({m}:{m:ChatMessage}){const c=useColors(),u=m.role==='user';return <View style={[s.message,u&&s.user]}><View style={[s.avatar,{backgroundColor:u?c.primary:c.primarySoft}]}><Feather name={u?'user':'compass'} size={14} color={u?c.primaryForeground:c.primary}/></View><View style={[s.bubble,{backgroundColor:u?c.primary:c.card,borderColor:u?c.primary:c.border}]}><Text style={[s.messageText,{color:u?c.primaryForeground:c.foreground}]}>{m.content}</Text>{m.sources&&m.sources.length>0&&<View><Text style={[s.sources,{color:u?'rgba(255,255,255,.7)':c.mutedForeground}]}>OFFICIAL SOURCES</Text>{m.sources.map(src=><Pressable key={src.url} onPress={()=>Linking.openURL(src.url)} style={[s.source,{backgroundColor:u?'rgba(255,255,255,.14)':c.primarySoft}]}><Feather name="external-link" size={12} color={u?c.primaryForeground:c.primary}/><Text style={[s.sourceText,{color:u?c.primaryForeground:c.primary}]}>{src.label}</Text></Pressable>)}</View>}</View></View>}
-const prompts=['How do I apply for a PAN card?','What scholarships can students find?','What documents do I need for Aadhaar?'];
-export default function Ask(){const c=useColors(),i=useSafeAreaInsets(),{chats,activeChatId,startNewChat,appendMessage,clearChat}=useSaarthi(),[sid,setSid]=useState(activeChatId),[text,setText]=useState(''),[sending,setSending]=useState(false);const session=useMemo(()=>chats.find(x=>x.id===sid),[chats,sid]);const input=useRef<TextInput>(null);useEffect(()=>{if(!sid)setSid(startNewChat())},[sid,startNewChat]);const send=async()=>{const q=text.trim();if(!q||sending||!sid)return;setText('');appendMessage(sid,{role:'user',content:q});setSending(true);try{const r=await getAssistantReply(q);appendMessage(sid,{role:'assistant',content:r.content,sources:r.sources});}catch{appendMessage(sid,{role:'assistant',content:'I could not complete that request right now. Please try again or use Search.',isError:true});}finally{setSending(false);}};const newChat=()=>{setSid(startNewChat());setText('')};return <KeyboardAvoidingView style={{flex:1,backgroundColor:c.background}} behavior="padding"><View style={{flex:1,paddingTop:i.top}}><View style={s.header}><View><Text style={[s.eyebrow,{color:c.primary}]}>YOUR GUIDE</Text><Text style={[s.headerTitle,{color:c.foreground}]}>Ask Saarthi</Text></View><View style={s.headerActions}><IconButton icon="trash-2" label="Clear chat" onPress={()=>sid&&clearChat(sid)}/><IconButton icon="plus" label="New chat" onPress={newChat}/></View></View>{!session?.messages.length&&!sending?<View style={s.emptyChat}><View style={[s.bigIcon,{backgroundColor:c.primarySoft}]}><Feather name="compass" size={30} color={c.primary}/></View><Text style={[s.emptyTitle,{color:c.foreground}]}>What can I help you understand?</Text><Text style={[s.emptyBody,{color:c.mutedForeground}]}>Ask about a service, scheme, eligibility, or required documents. I will point you to official sources.</Text>{prompts.map(p=><Pressable key={p} onPress={()=>setText(p)} style={[s.prompt,{backgroundColor:c.card,borderColor:c.border}]}><Text style={[s.promptText,{color:c.foreground}]}>{p}</Text><Feather name="arrow-up-right" size={15} color={c.primary}/></Pressable>)}</View>:<FlatList data={[...(session?.messages||[])].reverse()} inverted keyExtractor={x=>x.id} renderItem={({item})=><Bubble m={item}/>} contentContainerStyle={s.list} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled" ListHeaderComponent={sending?<View style={s.typing}><ActivityIndicator size="small" color={c.primary}/><Text style={[s.typingText,{color:c.mutedForeground}]}>Saarthi is checking the guidance...</Text></View>:null}/>}<View style={[s.inputArea,{borderTopColor:c.border,paddingBottom:Math.max(i.bottom,10)}]}><View style={[s.inputBox,{backgroundColor:c.card,borderColor:c.input}]}><TextInput ref={input} testID="chat-input" value={text} onChangeText={setText} multiline placeholder="Ask Saarthi anything..." placeholderTextColor={c.mutedForeground} returnKeyType="send" onSubmitEditing={send} style={[s.chatInput,{color:c.foreground}]}/><Pressable testID="send-message" disabled={!text.trim()||sending} onPress={send} style={[s.send,{backgroundColor:c.primary,opacity:!text.trim()||sending?.35:1}]}><Feather name="arrow-up" size={19} color={c.primaryForeground}/></Pressable></View><Text style={[s.disclaimer,{color:c.mutedForeground}]}>AI explanations are not applications or official decisions.</Text></View></View></KeyboardAvoidingView>}
-const s=StyleSheet.create({header:{paddingHorizontal:20,paddingTop:15,paddingBottom:13,flexDirection:'row',justifyContent:'space-between',alignItems:'center'},eyebrow:{fontFamily:'Inter_700Bold',fontSize:10,letterSpacing:1.2},headerTitle:{fontFamily:'Inter_700Bold',fontSize:25,marginTop:5},headerActions:{flexDirection:'row',gap:8},emptyChat:{flex:1,alignItems:'center',paddingHorizontal:22,paddingTop:34},bigIcon:{width:65,height:65,borderRadius:22,alignItems:'center',justifyContent:'center'},emptyTitle:{fontFamily:'Inter_700Bold',fontSize:21,textAlign:'center',marginTop:18},emptyBody:{fontFamily:'Inter_400Regular',fontSize:14,lineHeight:21,textAlign:'center',marginTop:8,marginBottom:26},prompt:{width:'100%',minHeight:52,borderWidth:1,borderRadius:15,paddingHorizontal:14,flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginBottom:9},promptText:{fontFamily:'Inter_500Medium',fontSize:13,flex:1,paddingRight:12},list:{paddingHorizontal:17,paddingTop:10,paddingBottom:15},message:{flexDirection:'row',alignItems:'flex-start',gap:8,marginBottom:11},user:{flexDirection:'row-reverse'},avatar:{width:28,height:28,borderRadius:10,alignItems:'center',justifyContent:'center',marginTop:2},bubble:{maxWidth:'82%',borderRadius:18,paddingHorizontal:14,paddingVertical:12,borderWidth:1},messageText:{fontFamily:'Inter_400Regular',fontSize:14,lineHeight:21},sources:{fontFamily:'Inter_700Bold',fontSize:9,letterSpacing:1,marginTop:10},source:{flexDirection:'row',gap:6,alignItems:'center',borderRadius:9,paddingVertical:7,paddingHorizontal:8,marginTop:6},sourceText:{fontFamily:'Inter_600SemiBold',fontSize:11},typing:{flexDirection:'row',gap:8,alignItems:'center',paddingVertical:10,paddingHorizontal:47},typingText:{fontFamily:'Inter_400Regular',fontSize:12},inputArea:{paddingTop:9,paddingHorizontal:16,borderTopWidth:1},inputBox:{minHeight:58,maxHeight:130,borderRadius:18,borderWidth:1,paddingLeft:15,paddingRight:7,flexDirection:'row',alignItems:'flex-end'},chatInput:{flex:1,minHeight:48,maxHeight:112,paddingTop:13,paddingBottom:11,fontFamily:'Inter_400Regular',fontSize:14},send:{width:40,height:40,borderRadius:14,alignItems:'center',justifyContent:'center',marginBottom:8},disclaimer:{fontFamily:'Inter_400Regular',fontSize:10,textAlign:'center',marginTop:7}});
+import { Feather } from "@expo/vector-icons";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+
+
+import {
+  FlatList,
+  Linking,
+  StyleSheet,
+  Text,
+  TextInput,
+  Image,
+  View,
+} from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { IconButton } from "@/components/UI";
+import {ExpoSpeechRecognitionModule,useSpeechRecognitionEvent,} from "expo-speech-recognition";
+import {
+  FadeInView,
+  MotionPressable,
+  TypingIndicator,
+} from "@/components/Motion";
+import { ChatMessage, useSaarthi } from "@/context/SaarthiContext";
+import { useColors } from "@/hooks/useColors";
+import { useLanguage } from "@/context/LanguagesContext";
+import { getAssistantReply } from "@/services/assistant";
+
+type PromptKey = "askPromptPan" | "askPromptScholarship" | "askPromptAadhaar";
+
+const PROMPT_KEYS: { id: string; key: PromptKey }[] = [
+  { id: "pan", key: "askPromptPan" },
+  { id: "scholarship", key: "askPromptScholarship" },
+  { id: "aadhaar", key: "askPromptAadhaar" },
+];
+
+function Bubble({
+  m,
+  onRetry,
+  retryDisabled,
+}: {
+  m: ChatMessage;
+  onRetry?: () => void;
+  retryDisabled?: boolean;
+}) {
+  const c = useColors();
+  const { t } = useLanguage();
+  const isUser = m.role === "user";
+
+  return (
+    <View
+  style={[
+    s.avatar,
+    { backgroundColor: isUser ? c.primary : c.primarySoft },
+  ]}
+>
+  {isUser ? (
+    <Feather name="user" size={18} color={c.foreground} />
+  ) : (
+    <Image
+      source={require("../../assets/images/images-2/Saarthi-AI Images.jpeg")}
+      style={{ width: 24, height: 24 }}
+      resizeMode="contain"
+    />
+  )}
+</View>
+   
+  );
+}
+
+export default function Ask() {
+  const c = useColors();
+  const insets = useSafeAreaInsets();
+  const { t, language, hydrated } = useLanguage();
+
+  const {
+    chats,
+    activeChatId,
+    startNewChat,
+    appendMessage,
+    removeMessage,
+    clearChat,
+  } = useSaarthi();
+
+  const [sid, setSid] = useState(activeChatId);
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const sendingRef = useRef(false);
+
+  const [isListening,setIsListening]=useState(false);
+
+  const session = useMemo(
+    () => chats.find((chat) => chat.id === sid),
+    [chats, sid],
+  );
+
+  const input = useRef<TextInput>(null);
+  useSpeechRecognitionEvent("start", () => {
+  setIsListening(true);
+});
+
+useSpeechRecognitionEvent("end", () => {
+  setIsListening(false);
+});
+
+useSpeechRecognitionEvent("result", (event) => {
+  const transcript = event.results[0]?.transcript;
+
+  if (transcript) {
+    setText(transcript);
+  }
+});
+
+useSpeechRecognitionEvent("error", () => {
+  setIsListening(false);
+});
+
+  useEffect(() => {
+    if (!sid) {
+      setSid(startNewChat());
+    }
+  }, [sid, startNewChat]);
+
+
+
+  const send = async (questionText = text, retryMessageId?: string) => {
+    const question = questionText.trim();
+
+    if (!hydrated || !question || sendingRef.current || !sid) return;
+
+    sendingRef.current = true;
+    if (retryMessageId) {
+      removeMessage(sid, retryMessageId);
+    } else {
+      setText("");
+      appendMessage(sid, { role: "user", content: question });
+    }
+    setSending(true);
+
+    try {
+      const response = await getAssistantReply(question, language);
+
+      appendMessage(sid, {
+        role: "assistant",
+        content: response.content,
+        sources: response.sources,
+      });
+    } catch {
+      appendMessage(sid, {
+        role: "assistant",
+        content: t("askError"),
+        isError: true,
+      });
+    } finally {
+      sendingRef.current = false;
+      setSending(false);
+    }
+  };
+
+  const retryMessage = (message: ChatMessage) => {
+    if (!session) return;
+    const messageIndex = session.messages.findIndex(
+      (item) => item.id === message.id,
+    );
+    if (messageIndex < 0) return;
+    const previousQuestion = session.messages
+      .slice(0, messageIndex)
+      .reverse()
+      .find((item) => item.role === "user");
+    if (previousQuestion) {
+      void send(previousQuestion.content, message.id);
+    }
+  };
+
+  const newChat = () => {
+    setSid(startNewChat());
+    setText("");
+  };
+
+  const toggleListening = async () => {
+  if (isListening) {
+    ExpoSpeechRecognitionModule.stop();
+    return;
+  }
+
+  try {
+    const permission =
+      await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+
+    if (!permission.granted) {
+      return;
+    }
+
+    ExpoSpeechRecognitionModule.start({
+      lang: language,
+      interimResults: true,
+      continuous: false,
+    });
+  } catch (error) {
+    console.warn("Speech recognition error:", error);
+    setIsListening(false);
+  }
+};
+
+  return (
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: c.background }}
+      behavior="padding"
+    >
+      <FadeInView style={{ flex: 1, paddingTop: insets.top }}>
+        <View style={s.header}>
+          <View style={s.headerText}>
+            <Text style={[s.eyebrow, { color: c.primary }]}>
+              {t("heroEyebrow")}
+            </Text>
+            <Text style={[s.headerTitle, { color: c.foreground }]}>
+              {t("ask")}
+            </Text>
+          </View>
+
+          <View style={s.headerActions}>
+            <IconButton
+              icon="trash-2"
+              label={t("clearChat")}
+              onPress={() => sid && clearChat(sid)}
+            />
+            <IconButton
+              icon="plus"
+              label={t("profileNewConversation")}
+              onPress={newChat}
+            />
+          </View>
+        </View>
+
+        {!session?.messages.length && !sending ? (
+          <View style={s.emptyChat}>
+            <View style={[s.bigIcon, { backgroundColor: c.primarySoft }]}>
+              <Image
+                source={require("../../assets/images/images-2/Saarthi-AI Images.jpeg")}
+                style={{ width: 38, height: 38, borderRadius: 12 }}
+                resizeMode="contain"
+              />
+            </View>
+
+            <Text style={[s.emptyTitle, { color: c.foreground }]}>
+              {t("askEmptyTitle")}
+            </Text>
+
+            <Text style={[s.emptyBody, { color: c.mutedForeground }]}>
+              {t("askEmptyDescription")}
+            </Text>
+
+            {PROMPT_KEYS.map((prompt) => (
+              <MotionPressable
+                key={prompt.id}
+                onPress={() => setText(t(prompt.key))}
+                style={[
+                  s.prompt,
+                  { backgroundColor: c.card, borderColor: c.border },
+                ]}
+              >
+                <Text style={[s.promptText, { color: c.foreground }]}>
+                  {t(prompt.key)}
+                </Text>
+                <Feather name="arrow-up-right" size={15} color={c.primary} />
+              </MotionPressable>
+            ))}
+          </View>
+        ) : (
+          <FlatList
+            data={[...(session?.messages || [])].reverse()}
+            inverted
+            keyExtractor={(message) => message.id}
+            renderItem={({ item }) => (
+              <Bubble
+                m={item}
+                onRetry={item.isError ? () => retryMessage(item) : undefined}
+                retryDisabled={sending}
+              />
+            )}
+            contentContainerStyle={s.list}
+            keyboardDismissMode="interactive"
+            keyboardShouldPersistTaps="handled"
+            ListHeaderComponent={
+              sending ? (
+                <View style={s.typing}>
+                  <TypingIndicator color={c.primary} label={t("askChecking")} />
+                  <Text style={[s.typingText, { color: c.mutedForeground }]}>
+                    {t("askChecking")}
+                  </Text>
+                </View>
+              ) : null
+            }
+          />
+        )}
+
+        <View
+          style={[
+            s.inputArea,
+            {
+              borderTopColor: c.border,
+              paddingBottom: Math.max(insets.bottom, 10),
+            },
+          ]}
+        >
+          <View
+            style={[
+              s.inputBox,
+              { backgroundColor: c.card, borderColor: c.input },
+            ]}
+          >
+            <TextInput
+              ref={input}
+              testID="chat-input"
+              value={text}
+              onChangeText={setText}
+              multiline
+              placeholder={t("askPlaceholder")}
+              placeholderTextColor={c.mutedForeground}
+              returnKeyType="send"
+              onSubmitEditing={() => void send()}
+              accessibilityLabel={t("askPlaceholder")}
+              style={[s.chatInput, { color: c.foreground }]}
+            />
+
+            <MotionPressable
+  testID="voice-input"
+  accessibilityRole="button"
+  accessibilityLabel={isListening ? "Stop voice input" : "Start voice input"}
+  onPress={() => void toggleListening()}
+  style={[
+    s.voiceButton,
+    {
+      backgroundColor: isListening ? c.primarySoft : c.background,
+      borderColor: c.border,
+    },
+  ]}
+>
+  <Feather
+    name={isListening ? "mic-off" : "mic"}
+    size={18}
+    color={c.primary}
+  />
+</MotionPressable>
+
+            <MotionPressable
+              testID="send-message"
+              accessibilityRole="button"
+              accessibilityLabel={t("askSend")}
+              disabled={!text.trim() || sending}
+              onPress={() => void send()}
+              style={[
+                s.send,
+                {
+                  backgroundColor: c.primary,
+                  opacity: !text.trim() || sending ? 0.35 : 1,
+                },
+              ]}
+            >
+              <Feather name="arrow-up" size={19} color={c.primaryForeground} />
+            </MotionPressable>
+          </View>
+
+          <Text style={[s.disclaimer, { color: c.mutedForeground }]}>
+            {t("askDisclaimer")}
+          </Text>
+        </View>
+      </FadeInView>
+    </KeyboardAvoidingView>
+  );
+}
+
+const s = StyleSheet.create({
+  header: {
+    paddingHorizontal: 20,
+    paddingTop: 15,
+    paddingBottom: 15,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  headerText: {
+    flex: 1,
+  },
+  eyebrow: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 10,
+    letterSpacing: 1.2,
+  },
+  headerTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 26,
+    letterSpacing: -0.4,
+    marginTop: 5,
+  },
+  headerActions: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  emptyChat: {
+    flex: 1,
+    alignItems: "center",
+    paddingHorizontal: 22,
+    paddingTop: 30,
+  },
+  bigIcon: {
+    width: 65,
+    height: 65,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 21,
+    textAlign: "center",
+    marginTop: 18,
+  },
+  emptyBody: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+    lineHeight: 21,
+    textAlign: "center",
+    marginTop: 8,
+    marginBottom: 26,
+  },
+  prompt: {
+    width: "100%",
+    minHeight: 54,
+    borderWidth: 1,
+    borderRadius: 15,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 9,
+  },
+  promptText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 13,
+    flex: 1,
+    paddingRight: 12,
+  },
+  list: {
+    paddingHorizontal: 17,
+    paddingTop: 12,
+    paddingBottom: 18,
+  },
+  message: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    marginBottom: 11,
+  },
+  user: {
+    flexDirection: "row-reverse",
+  },
+  avatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 2,
+  },
+  bubble: {
+    maxWidth: "82%",
+    borderRadius: 20,
+    paddingHorizontal: 15,
+    paddingVertical: 13,
+    borderWidth: 1,
+    shadowColor: "#172b4d",
+    shadowOpacity: 0.045,
+    shadowRadius: 7,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
+  },
+  messageText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+    lineHeight: 21,
+  },
+  retry: {
+    alignSelf: "flex-start",
+    width: 32,
+    height: 32,
+    borderRadius: 12,
+    marginTop: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sources: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 9,
+    letterSpacing: 1,
+    marginTop: 10,
+  },
+  source: {
+    flexDirection: "row",
+    gap: 6,
+    alignItems: "center",
+    borderRadius: 9,
+    paddingVertical: 7,
+    paddingHorizontal: 8,
+    marginTop: 6,
+  },
+  sourceText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+  },
+  typing: {
+    flexDirection: "row",
+    gap: 10,
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 47,
+  },
+  typingText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+  },
+  inputArea: {
+    paddingTop: 11,
+    paddingHorizontal: 16,
+    borderTopWidth: 1,
+  },
+  inputBox: {
+    minHeight: 60,
+    maxHeight: 130,
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingLeft: 15,
+    paddingRight: 7,
+    flexDirection: "row",
+    alignItems: "flex-end",
+  },
+  chatInput: {
+    flex: 1,
+    minHeight: 48,
+    maxHeight: 112,
+    paddingTop: 13,
+    paddingBottom: 11,
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+  },
+  send: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
+  },
+  disclaimer: {
+    fontSize: 11,
+    lineHeight: 16,
+    textAlign: "center",
+    marginHorizontal: 20,
+    marginTop: 10,
+    marginBottom: 12,
+  },
+
+  voiceButton: {
+  width: 40,
+  height: 40,
+  borderRadius: 14,
+  borderWidth: 1,
+  alignItems: "center",
+  justifyContent: "center",
+  marginBottom: 8,
+  marginRight: 6,
+},
+});
