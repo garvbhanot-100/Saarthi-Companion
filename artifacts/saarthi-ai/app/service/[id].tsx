@@ -20,6 +20,7 @@ import {
 } from "@/components/UI";
 import { getServiceById } from "@/data/services";
 import { serviceImages } from "@/data/serviceImages";
+import { getServiceGroup, serviceGroupIcons } from "@/data/serviceGroups";
 import {
   getServiceText,
   hasLocalizedServiceField,
@@ -126,7 +127,11 @@ export default function Detail() {
             resizeMode="contain"
           />
         ) : (
-          <Feather name="shield" size={25} color={c.primary} />
+          <Feather
+            name={serviceGroupIcons[getServiceGroup(item)]}
+            size={25}
+            color={c.primary}
+          />
         )}
       </View>
 

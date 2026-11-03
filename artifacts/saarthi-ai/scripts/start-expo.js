@@ -10,11 +10,28 @@ if (env.REPLIT_EXPO_DEV_DOMAIN) {
 }
 
 const expoCli = require.resolve("expo/bin/cli");
-const connectionMode = env.REPLIT_EXPO_DEV_DOMAIN ? "--localhost" : "--lan";
+const extraArgs = process.argv.slice(2);
+const connectionModes = ["--lan", "--localhost", "--tunnel"];
+const requestedConnectionModes = extraArgs.filter((arg) =>
+  connectionModes.includes(arg),
+);
+if (requestedConnectionModes.length > 1) {
+  console.error(
+    `Choose only one Expo connection mode: ${connectionModes.join(", ")}`,
+  );
+  process.exit(1);
+}
+const connectionMode =
+  requestedConnectionModes[0] ||
+  (env.REPLIT_EXPO_DEV_DOMAIN ? "--localhost" : "--lan");
+if (connectionMode === "--lan" && requestedConnectionModes.length === 1) {
+  delete env.EXPO_PACKAGER_PROXY_URL;
+  delete env.REACT_NATIVE_PACKAGER_HOSTNAME;
+}
+const expoArgs = extraArgs.filter((arg) => !connectionModes.includes(arg));
 // expo-dev-client is installed, so Expo would otherwise print a QR code that
 // only a development build can open. Default to Expo Go unless asked otherwise.
-const extraArgs = process.argv.slice(2);
-const targetsDevClient = extraArgs.includes("--dev-client");
+const targetsDevClient = expoArgs.includes("--dev-client");
 const child = spawn(
   process.execPath,
   [
@@ -24,7 +41,7 @@ const child = spawn(
     "--port",
     env.PORT || "8081",
     ...(targetsDevClient ? [] : ["--go"]),
-    ...extraArgs,
+    ...expoArgs,
   ],
   {
     cwd: path.resolve(__dirname, ".."),

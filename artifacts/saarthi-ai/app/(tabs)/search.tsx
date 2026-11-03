@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
-import { router } from "expo-router";
-import React, { useMemo, useState } from "react";
+import { router, useLocalSearchParams } from "expo-router";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   FlatList,
   Image,
@@ -13,12 +13,19 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { services } from "@/data/services";
 import { serviceImages } from "@/data/serviceImages";
 import {
+  getServiceGroup,
+  isServiceGroupFilter,
+  serviceGroupIcons,
+  type ServiceGroupFilter,
+} from "@/data/serviceGroups";
+import {
   getLocalizedService,
   hasLocalizedServiceField,
 } from "@/data/serviceTransalations";
 import { useSaarthi } from "@/context/SaarthiContext";
 import { useColors } from "@/hooks/useColors";
 import { SectionHeading } from "@/components/UI";
+import { CategoryTabs } from "@/components/CategoryTabs";
 import { FadeInView, MotionPressable } from "@/components/Motion";
 import { useLanguage } from "@/context/LanguagesContext";
 
@@ -35,55 +42,74 @@ export default function Search() {
   const { t, language } = useLanguage();
   const [q, setQ] = useState("");
   const { savedServiceIds, toggleSaved } = useSaarthi();
+  // Home links here with ?category=… to open a specific tab.
+  const { category: categoryParam } = useLocalSearchParams<{
+    category?: string;
+  }>();
+  const [group, setGroup] = useState<ServiceGroupFilter>(
+    isServiceGroupFilter(categoryParam) ? categoryParam : "all",
+  );
+
+  useEffect(() => {
+    if (isServiceGroupFilter(categoryParam)) setGroup(categoryParam);
+  }, [categoryParam]);
+
+  // Localizing the whole catalog only depends on the language, so it is not
+  // repeated on every keystroke.
+  const localizedServices = useMemo(
+    () =>
+      services.map((service) => {
+        const localizedService = getLocalizedService(service.id, language);
+        const name = hasLocalizedServiceField(service.id, language, "name")
+          ? (localizedService?.name ?? service.name)
+          : t("serviceTranslationUnavailable");
+        const description = hasLocalizedServiceField(
+          service.id,
+          language,
+          "description",
+        )
+          ? (localizedService?.description ?? service.description)
+          : t("serviceTranslationUnavailable");
+        const category = hasLocalizedServiceField(
+          service.id,
+          language,
+          "category",
+        )
+          ? (localizedService?.category ?? service.category)
+          : t("serviceTranslationUnavailable");
+        const serviceGroup = getServiceGroup(service);
+
+        return {
+          ...service,
+          name,
+          description,
+          category,
+          group: serviceGroup,
+          searchText: [
+            service.name,
+            service.category,
+            service.description,
+            service.source,
+            name,
+            category,
+            description,
+          ]
+            .join(" ")
+            .toLocaleLowerCase(),
+        };
+      }),
+    [language, t],
+  );
 
   const results = useMemo(() => {
     const query = q.trim().toLocaleLowerCase();
 
-    const localizedServices = services.map((service) => {
-      const localizedService = getLocalizedService(service.id, language);
-      const name = hasLocalizedServiceField(service.id, language, "name")
-        ? (localizedService?.name ?? service.name)
-        : t("serviceTranslationUnavailable");
-      const description = hasLocalizedServiceField(
-        service.id,
-        language,
-        "description",
-      )
-        ? (localizedService?.description ?? service.description)
-        : t("serviceTranslationUnavailable");
-      const category = hasLocalizedServiceField(
-        service.id,
-        language,
-        "category",
-      )
-        ? (localizedService?.category ?? service.category)
-        : t("serviceTranslationUnavailable");
-
-      return {
-        ...service,
-        name,
-        description,
-        category,
-        searchText: [
-          service.name,
-          service.category,
-          service.description,
-          service.source,
-          name,
-          category,
-          description,
-        ]
-          .join(" ")
-          .toLocaleLowerCase(),
-      };
-    });
-
-    if (!query) return localizedServices;
-
-    return localizedServices.filter((service) =>
-      service.searchText.includes(query),
+    return localizedServices.filter(
+      (service) =>
+        (group === "all" || service.group === group) &&
+        (!query || service.searchText.includes(query)),
     );
-  }, [q, language, t]);
+  }, [localizedServices, q, group]);
 
   return (
     <FadeInView style={{ flex: 1, backgroundColor: c.background }}>
@@ -145,6 +171,10 @@ export default function Search() {
                   />
                 </MotionPressable>
               )}
+            </View>
+
+            <View style={styles.categoryTabs}>
+              <CategoryTabs selected={group} onSelect={setGroup} />
             </View>
 
             {!q && (
@@ -227,7 +257,11 @@ export default function Search() {
                       resizeMode="contain"
                     />
                   ) : (
-                    <Feather name="shield" size={18} color={c.primary} />
+                    <Feather
+                      name={serviceGroupIcons[item.group]}
+                      size={18}
+                      color={c.primary}
+                    />
                   )}
                 </View>
 
@@ -360,11 +394,15 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     fontSize: 14,
   },
+  categoryTabs: {
+    marginTop: 14,
+    marginBottom: 8,
+  },
   suggestions: {
     flexDirection: "row",
     gap: 7,
     flexWrap: "wrap",
-    marginTop: 12,
+    marginTop: 4,
     marginBottom: 22,
   },
   chip: {

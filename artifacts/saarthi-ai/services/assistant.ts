@@ -125,6 +125,67 @@ const serviceKeywords = services.map((service) => ({
   weak: new Set(tokenize(`${service.category} ${service.description}`)),
 }));
 
+function scoreServices(question: string) {
+  const words = new Set(tokenize(question));
+  return serviceKeywords.map(({ service, strong, weak }) => {
+    let score = 0;
+    for (const word of words) {
+      if (strong.has(word)) score += 3;
+      else if (weak.has(word)) score += 1;
+    }
+    return { service, score };
+  });
+}
+
+// The backend rejects a serviceContext over 128,000 characters; stay under it.
+const MAX_SERVICE_CONTEXT_CHARS = 120_000;
+
+const toContextRow = (fields: string[]) =>
+  fields
+    .map((field) => field.replace(/\s+/g, " ").replaceAll("|", "/").trim())
+    .join(" | ");
+
+const fullContextRow = (service: ServiceRecord) =>
+  toContextRow([
+    service.name,
+    service.category,
+    service.description,
+    service.officialUrl,
+    service.eligibility,
+    service.documents,
+  ]);
+
+// Sends the whole catalog while it fits. Otherwise the services matching the
+// question keep their full rows and the rest are sent as name, category and
+// URL only, in the same column positions the backend reads.
+function buildServiceContext(question: string): string {
+  const fullRows = services.map(fullContextRow);
+  const fullContext = fullRows.join("\n");
+  if (fullContext.length <= MAX_SERVICE_CONTEXT_CHARS) return fullContext;
+
+  const compactRows = services.map((service) =>
+    toContextRow([service.name, service.category, "", service.officialUrl]),
+  );
+  let length = compactRows.join("\n").length;
+  const expanded = new Set<number>();
+  const relevant = scoreServices(question)
+    .map(({ score }, index) => ({ score, index }))
+    .filter(({ score }) => score > 0)
+    .sort((a, b) => b.score - a.score);
+  for (const { index } of relevant) {
+    const extra = fullRows[index].length - compactRows[index].length;
+    if (length + extra > MAX_SERVICE_CONTEXT_CHARS) break;
+    expanded.add(index);
+    length += extra;
+  }
+
+  return services
+    .map((_, index) =>
+      expanded.has(index) ? fullRows[index] : compactRows[index],
+    )
+    .join("\n");
+}
+
 // Official links for a reply: catalog URLs the reply itself cites come first,
 // then services whose name, id, or domain best match the question.
 function findSources(question: string, content: string): AssistantSource[] {
@@ -135,15 +196,7 @@ function findSources(question: string, content: string): AssistantSource[] {
     if (service && !cited.includes(service)) cited.push(service);
   }
 
-  const words = new Set(tokenize(question));
-  const scored = serviceKeywords.map(({ service, strong, weak }) => {
-    let score = 0;
-    for (const word of words) {
-      if (strong.has(word)) score += 3;
-      else if (weak.has(word)) score += 1;
-    }
-    return { service, score };
-  });
+  const scored = scoreServices(question);
   // A named scheme ("Suraksha Bima") outranks schemes sharing a generic word
   // ("Bima"); a generic question still lists every matching scheme.
   const best = Math.max(0, ...scored.map(({ score }) => score));
@@ -159,20 +212,7 @@ export async function getAssistantReply(
   question: string,
   language: LanguageCode,
 ): Promise<AssistantReply> {
-  const serviceContext = services
-    .map((service) =>
-      [
-        service.name,
-        service.category,
-        service.description,
-        service.officialUrl,
-        service.eligibility,
-        service.documents,
-      ]
-        .map((field) => field.replace(/\s+/g, " ").replaceAll("|", "/").trim())
-        .join(" | "),
-    )
-    .join("\n");
+  const serviceContext = buildServiceContext(question);
 
   let response: Response;
   const controller = new AbortController();

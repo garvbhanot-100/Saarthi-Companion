@@ -10,6 +10,24 @@ Set `GROQ_API_KEY` and `GROQ_MODEL` in `server/.env` for local development (see 
 
 From the repository root, start the backend with `pnpm --filter @workspace/saarthi-ai run serve` and start Expo in a separate terminal with `pnpm --filter @workspace/saarthi-ai run dev`. The server's entry point is `server/serve.js`. Run backend tests with `pnpm --filter @workspace/saarthi-ai run test` and typecheck with `pnpm --filter @workspace/saarthi-ai run typecheck`.
 
+## Android development device
+
+This project includes an Expo development client and a generated native Android project. To use an installed development client on a physical Android phone, connect the phone and computer to the same Wi-Fi network, then start Metro from the repository root:
+
+```powershell
+pnpm --filter @workspace/saarthi-ai run start:dev-client -- --lan
+```
+
+Open the Saarthi AI development client and connect it to the QR code printed by Expo. `--lan` explicitly advertises a reachable LAN address, including when Replit proxy environment variables are present. Allow Node.js/Metro through the Windows firewall on the private network if the phone cannot reach port `8081`. Do not select an old saved `localhost` server entry.
+
+If native dependencies or app configuration change, stop Metro and rebuild/reinstall the development client with a connected Android device and Android SDK configured:
+
+```powershell
+pnpm --filter @workspace/saarthi-ai run android -- --no-bundler
+```
+
+Then start Metro again with the LAN command above. Ordinary JavaScript changes do not require a native rebuild. EAS `preview` and `production` profiles instead build standalone apps with the configured HTTPS Render API URL; they do not need a running Metro server.
+
 ## Render backend
 
 - **Root directory:** repository root (`.`), so Render can access `pnpm-lock.yaml` and `pnpm-workspace.yaml`.

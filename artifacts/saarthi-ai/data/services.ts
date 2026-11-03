@@ -1,6 +1,10 @@
-type ServiceCategory =
+import { educationServices } from "./educationServices";
+import { transportServices } from "./transportServices";
+
+export type ServiceCategory =
   | "Identity"
   | "Education"
+  | "Scholarships"
   | "Business"
   | "Social security"
   | "Farmer support"
@@ -1813,6 +1817,8 @@ export const services: ServiceRecord[] = [
     officialUrl: "https://www.startupindia.gov.in/",
     lastVerified: "Official government source recorded for reference",
   },
+  ...educationServices,
+  ...transportServices,
 ];
 export function getServiceById(id: string) {
   return services.find((item) => item.id === id);

@@ -5,6 +5,7 @@ import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { PrimaryButton, SectionHeading } from "@/components/UI";
+import { CategoryTabs } from "@/components/CategoryTabs";
 import { FadeInView, MotionPressable } from "@/components/Motion";
 import React from "react";
 import { useLanguage } from "@/context/LanguagesContext";
@@ -158,6 +159,14 @@ export default function Home() {
           eyebrow={t("exploreServices")}
           title={t("startWithService")}
         />
+
+        <View style={styles.categoryTabs}>
+          <CategoryTabs
+            onSelect={(category) =>
+              router.push({ pathname: "/search", params: { category } })
+            }
+          />
+        </View>
 
         <View style={styles.grid}>
           {[
@@ -457,6 +466,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
+  },
+  categoryTabs: {
+    marginBottom: 12,
   },
   grid: {
     flexDirection: "row",
