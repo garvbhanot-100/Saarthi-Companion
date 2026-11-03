@@ -1,7 +1,14 @@
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React from "react";
-import { Alert, FlatList, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { GhostButton, PrimaryButton, SectionHeading } from "@/components/UI";
@@ -14,13 +21,25 @@ import { useLanguage } from "@/context/LanguagesContext";
 export default function Profile() {
   const c = useColors();
   const i = useSafeAreaInsets();
-  const { t, hydrated } = useLanguage();
+  const { t, hydrated: languageHydrated } = useLanguage();
 
-  const { user, chats, savedServiceIds, logOut, deleteChat, openChat } =
-    useSaarthi();
+  const {
+    user,
+    chats,
+    savedServiceIds,
+    hydrated: profileHydrated,
+    hydrationError,
+    logOut,
+    deleteChat,
+    openChat,
+  } = useSaarthi();
 
-  if (!hydrated) {
-    return null;
+  if (!languageHydrated || !profileHydrated) {
+    return (
+      <View style={[styles.loading, { backgroundColor: c.background }]}>
+        <ActivityIndicator color={c.primary} />
+      </View>
+    );
   }
 
   if (!user) {
@@ -46,6 +65,12 @@ export default function Profile() {
         <Text style={[styles.guestBody, { color: c.mutedForeground }]}>
           {t("profileGuestDescription")}
         </Text>
+
+        {hydrationError && (
+          <Text style={[styles.loadError, { color: c.accent }]}>
+            {hydrationError}
+          </Text>
+        )}
 
         <View style={styles.guestLanguage}>
           <LanguageSelector />
@@ -82,6 +107,11 @@ export default function Profile() {
         }}
         ListHeaderComponent={
           <View>
+            {hydrationError && (
+              <Text style={[styles.loadError, { color: c.accent }]}>
+                {hydrationError}
+              </Text>
+            )}
             <View style={styles.profileHeader}>
               <View
                 style={[styles.profileAvatar, { backgroundColor: c.primary }]}
@@ -268,6 +298,18 @@ export default function Profile() {
 }
 
 const styles = StyleSheet.create({
+  loading: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  loadError: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    lineHeight: 18,
+    marginBottom: 14,
+    textAlign: "center",
+  },
   guest: {
     flex: 1,
     paddingHorizontal: 20,

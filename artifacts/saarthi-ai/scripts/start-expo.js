@@ -11,9 +11,21 @@ if (env.REPLIT_EXPO_DEV_DOMAIN) {
 
 const expoCli = require.resolve("expo/bin/cli");
 const connectionMode = env.REPLIT_EXPO_DEV_DOMAIN ? "--localhost" : "--lan";
+// expo-dev-client is installed, so Expo would otherwise print a QR code that
+// only a development build can open. Default to Expo Go unless asked otherwise.
+const extraArgs = process.argv.slice(2);
+const targetsDevClient = extraArgs.includes("--dev-client");
 const child = spawn(
   process.execPath,
-  [expoCli, "start", connectionMode, "--port", env.PORT || "8081"],
+  [
+    expoCli,
+    "start",
+    connectionMode,
+    "--port",
+    env.PORT || "8081",
+    ...(targetsDevClient ? [] : ["--go"]),
+    ...extraArgs,
+  ],
   {
     cwd: path.resolve(__dirname, ".."),
     env,

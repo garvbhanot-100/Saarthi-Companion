@@ -5,7 +5,10 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "saarthi-ai",
+    "scheme": [
+      "saarthi-ai",
+      "com.garv.saarthiai"
+    ],
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -39,7 +42,8 @@
           }
         }
       ],
-      "expo-speech-recognition"
+      "expo-speech-recognition",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true,

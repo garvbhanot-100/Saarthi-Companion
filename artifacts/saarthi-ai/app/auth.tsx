@@ -1,7 +1,14 @@
 import { Feather } from "@expo/vector-icons";
-import { makeRedirectUri } from "expo-auth-session";
-import React, { useEffect, useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
@@ -14,105 +21,189 @@ import {
 import { useSaarthi } from "@/context/SaarthiContext";
 import { useLanguage } from "@/context/LanguagesContext";
 import { useColors } from "@/hooks/useColors";
-import * as WebBrowser from "expo-web-browser";
-import * as Google from "expo-auth-session/providers/google";
 
-WebBrowser.maybeCompleteAuthSession();
+const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim();
+
+type GoogleSignInModule = typeof import("react-native-nitro-google-signin");
+
+// Google sign-in is a native (Nitro) module. It is missing in Expo Go, where
+// importing it throws, so load it lazily and hide the button when unavailable.
+let googleSignIn: GoogleSignInModule | null = null;
+if (Platform.OS === "android" && GOOGLE_WEB_CLIENT_ID) {
+  try {
+    googleSignIn = require("react-native-nitro-google-signin") as GoogleSignInModule;
+  } catch {
+    console.warn("Google sign-in is unavailable in this build (for example Expo Go).");
+  }
+}
+
+// Return to the screen that opened the auth modal (the Profile tab).
+const closeAuth = () => {
+  if (router.canGoBack()) {
+    router.back();
+  } else {
+    router.replace("/(tabs)/profile");
+  }
+};
+
 export default function Auth() {
-  const redirectUri = makeRedirectUri({
-    scheme: "saarthi-ai",
-  });
-
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    androidClientId:
-      "224635012304-6qqvn4kcmq1gonm25tnr20uqi5hs93b6.apps.googleusercontent.com",
-  });
+  const c = useColors();
+  const i = useSafeAreaInsets();
+  const { t, hydrated: languageHydrated } = useLanguage();
+  const { hydrated: profileHydrated, signUp, logIn } = useSaarthi();
+  const [mode, setMode] = useState<"login" | "signup">("signup");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const authInProgress = useRef(false);
+  const [googleReady, setGoogleReady] = useState(false);
 
   useEffect(() => {
-    const handleGoogleLogin = async () => {
-      if (response?.type !== "success") return;
+    if (!googleSignIn || !GOOGLE_WEB_CLIENT_ID) return;
+    try {
+      googleSignIn.GoogleOneTapSignIn.configure({
+        webClientId: GOOGLE_WEB_CLIENT_ID,
+        autoSelectOnSignIn: false,
+        offlineAccess: false,
+      });
+      setGoogleReady(true);
+    } catch (error) {
+      console.error("Could not configure Google sign-in:", error);
+    }
+  }, []);
 
-      try {
-        const accessToken = response.authentication?.accessToken;
-
-        if (!accessToken) {
-          setError(t("profileAuthGoogleTokenMissing"));
-          return;
-        }
-
-        const userResponse = await fetch(
-          "https://www.googleapis.com/oauth2/v3/userinfo",
-          {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-            },
-          },
-        );
-
-        const user = await userResponse.json();
-
-        if (!user.email) {
-          setError(t("profileAuthGoogleEmailMissing"));
-          return;
-        }
-
-        setBusy(true);
-
-        await signUp({
-          name: user.name || t("profileAuthDefaultName"),
-          email: user.email.trim().toLowerCase(),
-        });
-
-        setBusy(false);
-
-        router.replace("/profile");
-      } catch (error) {
-        console.error("Google login error:", error);
-        setBusy(false);
-        setError(t("profileAuthGoogleLoginFailed"));
-      }
-    };
-
-    handleGoogleLogin();
-  }, [response]);
-  const c = useColors(),
-    i = useSafeAreaInsets(),
-    { t, hydrated } = useLanguage(),
-    { signUp, logIn } = useSaarthi(),
-    [mode, setMode] = useState<"login" | "signup">("signup"),
-    [name, setName] = useState(""),
-    [email, setEmail] = useState(""),
-    [password, setPassword] = useState(""),
-    [confirm, setConfirm] = useState(""),
-    [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
   const submit = async () => {
+    if (authInProgress.current) return;
     setError("");
-    const e = email.trim().toLowerCase();
-    if (!e.includes("@")) return setError(t("profileAuthInvalidEmail"));
-    if (mode === "signup") {
-      if (!name.trim()) return setError(t("profileAuthNameRequired"));
-      if (password.length < 8)
-        return setError(t("profileAuthPasswordMinimum"));
-      if (password !== confirm)
-        return setError(t("profileAuthPasswordMismatch"));
-      setBusy(true);
-      await signUp({ name, email: e });
+    const formMode = mode;
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail.includes("@")) {
+      setError(t("profileAuthInvalidEmail"));
+      return;
+    }
+    if (formMode === "signup") {
+      if (!name.trim()) {
+        setError(t("profileAuthNameRequired"));
+        return;
+      }
+      if (password.length < 8) {
+        setError(t("profileAuthPasswordMinimum"));
+        return;
+      }
+      if (password !== confirm) {
+        setError(t("profileAuthPasswordMismatch"));
+        return;
+      }
+    } else if (!password) {
+      setError(t("profileAuthPasswordRequired"));
+      return;
+    }
+
+    authInProgress.current = true;
+    setBusy(true);
+    try {
+      if (formMode === "signup") {
+        await signUp({ name, email: normalizedEmail }, password);
+      } else {
+        const loggedIn = await logIn(normalizedEmail, password);
+        if (!loggedIn) {
+          setError(t("profileAuthLocalProfileMissing"));
+          return;
+        }
+      }
+      closeAuth();
+    } catch (error) {
+      console.error("Could not save the local profile:", error);
+      setError(
+        error instanceof Error
+          ? error.message
+          : t("profileAuthGoogleLoginFailed"),
+      );
+    } finally {
+      authInProgress.current = false;
       setBusy(false);
-      router.replace("/profile");
-    } else {
-      if (!password) return setError(t("profileAuthPasswordRequired"));
-      setBusy(true);
-      const ok = await logIn(e);
-      setBusy(false);
-      if (!ok)
-        return setError(
-          t("profileAuthLocalProfileMissing"),
-        );
-      router.replace("/profile");
     }
   };
-  if (!hydrated) return null;
+
+  const continueWithGoogle = async () => {
+    if (authInProgress.current) return;
+    if (!googleSignIn || !googleReady) {
+      setError(t("profileAuthGoogleLoginFailed"));
+      return;
+    }
+    const {
+      GoogleOneTapSignIn,
+      isCancelledResponse,
+      isErrorWithCode,
+      isNoSavedCredentialFoundResponse,
+      isSuccessResponse,
+      statusCodes,
+    } = googleSignIn;
+
+    const authMode = mode;
+    authInProgress.current = true;
+    setError("");
+    setBusy(true);
+    try {
+      await GoogleOneTapSignIn.checkPlayServices();
+      let result = await GoogleOneTapSignIn.signIn();
+      if (isNoSavedCredentialFoundResponse(result)) {
+        result = await GoogleOneTapSignIn.createAccount();
+      }
+      if (isNoSavedCredentialFoundResponse(result)) {
+        result = await GoogleOneTapSignIn.presentExplicitSignIn();
+      }
+      if (isCancelledResponse(result)) return;
+      if (!isSuccessResponse(result)) {
+        throw new Error("Google did not return an authenticated account");
+      }
+
+      const { user, idToken } = result.data;
+      if (!idToken) throw new Error("Google did not return an ID token");
+      if (!user.email?.trim()) {
+        setError(t("profileAuthGoogleEmailMissing"));
+        return;
+      }
+      const profile = {
+        name: user.name?.trim() || t("profileAuthDefaultName"),
+        email: user.email.trim().toLowerCase(),
+      };
+      if (authMode === "login") {
+        await logIn(profile.email, undefined, profile);
+      } else {
+        await signUp(profile);
+      }
+      closeAuth();
+    } catch (error) {
+      if (isErrorWithCode(error) && error.code === statusCodes.SIGN_IN_CANCELLED) {
+        return;
+      }
+      console.error("Google sign-in failed:", error);
+      setError(t("profileAuthGoogleLoginFailed"));
+    } finally {
+      authInProgress.current = false;
+      setBusy(false);
+    }
+  };
+
+  if (!languageHydrated || !profileHydrated) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: c.background,
+        }}
+      >
+        <ActivityIndicator color={c.primary} />
+      </View>
+    );
+  }
+
   return (
     <KeyboardAwareScrollViewCompat
       style={{ flex: 1, backgroundColor: c.background }}
@@ -129,7 +220,7 @@ export default function Auth() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={t("profileAuthClose")}
-          onPress={() => router.back()}
+          onPress={closeAuth}
         >
           <Feather name="x" size={22} color={c.mutedForeground} />
         </Pressable>
@@ -231,12 +322,12 @@ export default function Auth() {
           secureTextEntry
         />
       )}
-      {error && (
+      {error ? (
         <View style={[s.errorBox, { backgroundColor: c.warningSoft }]}>
           <Feather name="alert-circle" size={15} color={c.accent} />
           <Text style={[s.errorText, { color: c.foreground }]}>{error}</Text>
         </View>
-      )}
+      ) : null}
       <PrimaryButton
         title={
           busy
@@ -249,22 +340,24 @@ export default function Auth() {
         onPress={submit}
         disabled={busy}
       />
-      <View style={s.or}>
-        <View style={[s.line, { backgroundColor: c.border }]} />
-        <Text style={[s.orText, { color: c.mutedForeground }]}>
-          {t("profileAuthOr")}
-        </Text>
-        <View style={[s.line, { backgroundColor: c.border }]} />
-      </View>
-      <GhostButton
-        title={t("profileAuthContinueGoogle")}
-        icon="globe"
-        onPress={() => {
-          if (request) {
-            promptAsync();
-          }
-        }}
-      />
+      {googleReady && (
+        <>
+          <View style={s.or}>
+            <View style={[s.line, { backgroundColor: c.border }]} />
+            <Text style={[s.orText, { color: c.mutedForeground }]}>
+              {t("profileAuthOr")}
+            </Text>
+            <View style={[s.line, { backgroundColor: c.border }]} />
+          </View>
+          <GhostButton
+            title={
+              busy ? t("profileAuthWaiting") : t("profileAuthContinueGoogle")
+            }
+            icon="globe"
+            onPress={() => void continueWithGoogle()}
+          />
+        </>
+      )}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={
@@ -291,6 +384,7 @@ export default function Auth() {
     </KeyboardAwareScrollViewCompat>
   );
 }
+
 const s = StyleSheet.create({
   top: {
     flexDirection: "row",

@@ -92,6 +92,11 @@ const english = {
   serviceTranslationUnavailable: "Translation unavailable",
 
   officialSources: "OFFICIAL SOURCES",
+  sourceTypeInformation: "Scheme information",
+  sourceTypeApplication: "Application portal",
+  sourceTypeForms: "Forms & downloads",
+  sourceTypeWebsite: "Official website",
+  askUnverifiedLinkRemoved: "[unverified link removed]",
   askEyebrow: "YOUR GUIDE",
   clearChat: "Clear chat",
   newChat: "New chat",
@@ -741,6 +746,11 @@ export const searchTranslationKeys: TranslationKey[] = [
 
 export const askSavedTranslationKeys: TranslationKey[] = [
   "officialSources",
+  "sourceTypeInformation",
+  "sourceTypeApplication",
+  "sourceTypeForms",
+  "sourceTypeWebsite",
+  "askUnverifiedLinkRemoved",
   "clearChat",
   "askEmptyTitle",
   "askEmptyDescription",

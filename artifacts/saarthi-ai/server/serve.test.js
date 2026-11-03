@@ -1,15 +1,22 @@
 const assert = require("node:assert/strict");
 const { after, before, beforeEach, test } = require("node:test");
 
-const { createServer, RESPONSE_LANGUAGES } = require("./serve");
+const {
+  createServer,
+  RESPONSE_LANGUAGES,
+  selectServiceContext,
+} = require("./serve");
 const requestToServer = global.fetch.bind(global);
+
+const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 let server;
 let baseUrl;
 let originalFetch;
 let originalApiKey;
+let originalModel;
 
-function geminiResponse(
+function groqResponse(
   content = "Please verify current requirements with the official portal.",
   status = 200,
   errorMessage = "provider unavailable",
@@ -20,25 +27,20 @@ function geminiResponse(
       status >= 400
         ? {
             error: {
-              code: status,
               message: errorMessage,
-              status: status === 503 ? "UNAVAILABLE" : "INVALID_ARGUMENT",
-              ...(metadata.retryInfo
-                ? {
-                    details: [
-                      {
-                        "@type": "type.googleapis.com/google.rpc.RetryInfo",
-                        retryDelay: metadata.retryInfo,
-                      },
-                    ],
-                  }
-                : {}),
+              type: metadata.type || "server_error",
+              ...(metadata.code ? { code: metadata.code } : {}),
             },
           }
         : {
-            candidates: [
+            id: "chatcmpl-test",
+            object: "chat.completion",
+            model: "openai/gpt-oss-20b",
+            choices: [
               {
-                content: { parts: [{ text: content }] },
+                index: 0,
+                message: { role: "assistant", content },
+                finish_reason: "stop",
               },
             ],
           },
@@ -53,12 +55,9 @@ function geminiResponse(
   );
 }
 
-function modelFromUrl(url) {
-  const match = new URL(url).pathname.match(
-    /\/models\/([^/:]+):generateContent$/,
-  );
-  assert.ok(match, `unexpected Gemini endpoint: ${url}`);
-  return match[1];
+function systemPrompt(providerRequest) {
+  assert.equal(providerRequest.messages[0].role, "system");
+  return providerRequest.messages[0].content;
 }
 
 async function post(body, raw = false) {
@@ -71,8 +70,10 @@ async function post(body, raw = false) {
 
 before(async () => {
   originalFetch = global.fetch;
-  originalApiKey = process.env.GEMINI_API_KEY;
-  process.env.GEMINI_API_KEY = "test-only-not-a-real-key";
+  originalApiKey = process.env.GROQ_API_KEY;
+  originalModel = process.env.GROQ_MODEL;
+  process.env.GROQ_API_KEY = "test-only-not-a-real-key";
+  process.env.GROQ_MODEL = "openai/gpt-oss-20b";
 
   server = createServer();
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -80,7 +81,7 @@ before(async () => {
 });
 
 beforeEach(() => {
-  global.fetch = async () => geminiResponse();
+  global.fetch = async () => groqResponse();
 });
 
 after(async () => {
@@ -89,16 +90,18 @@ after(async () => {
   });
 
   global.fetch = originalFetch;
-  if (originalApiKey === undefined) {
-    delete process.env.GEMINI_API_KEY;
-  } else {
-    process.env.GEMINI_API_KEY = originalApiKey;
+  for (const [name, value] of [
+    ["GROQ_API_KEY", originalApiKey],
+    ["GROQ_MODEL", originalModel],
+  ]) {
+    if (value === undefined) delete process.env[name];
+    else process.env[name] = value;
   }
 });
 
 test("serves an independent health response on /health and /healthz", async () => {
-  const apiKey = process.env.GEMINI_API_KEY;
-  delete process.env.GEMINI_API_KEY;
+  const apiKey = process.env.GROQ_API_KEY;
+  delete process.env.GROQ_API_KEY;
   try {
     for (const route of ["/health", "/healthz"]) {
       const response = await requestToServer(`${baseUrl}${route}`);
@@ -106,18 +109,20 @@ test("serves an independent health response on /health and /healthz", async () =
       assert.deepEqual(await response.json(), { status: "ok" });
     }
   } finally {
-    process.env.GEMINI_API_KEY = apiKey;
+    process.env.GROQ_API_KEY = apiKey;
   }
 });
 
-test("uses the selected language for an English question", async () => {
+test("sends a Groq chat completion with the selected language", async () => {
+  let providerUrl;
+  let providerOptions;
   let providerRequest;
-  let providerModel;
   global.fetch = async (url, options) => {
-    providerModel = modelFromUrl(url);
+    providerUrl = url;
+    providerOptions = options;
     providerRequest = JSON.parse(options.body);
     assert.ok(options.signal instanceof AbortSignal);
-    return geminiResponse("தகவலை அதிகாரப்பூர்வ தளத்தில் சரிபார்க்கவும்.");
+    return groqResponse("தகவலை அதிகாரப்பூர்வ தளத்தில் சரிபார்க்கவும்.");
   };
 
   const response = await post({
@@ -130,31 +135,94 @@ test("uses the selected language for an English question", async () => {
   assert.deepEqual(await response.json(), {
     content: "தகவலை அதிகாரப்பூர்வ தளத்தில் சரிபார்க்கவும்.",
   });
+  assert.equal(providerUrl, GROQ_URL);
+  assert.equal(providerOptions.method, "POST");
+  assert.equal(
+    providerOptions.headers.authorization,
+    "Bearer test-only-not-a-real-key",
+  );
+  assert.equal(providerRequest.model, "openai/gpt-oss-20b");
+  assert.equal(providerRequest.stream, false);
+  assert.equal(providerRequest.reasoning_effort, "low");
+  assert.ok(providerRequest.max_completion_tokens > 0);
+
+  const prompt = systemPrompt(providerRequest);
   assert.match(
-    providerRequest.systemInstruction.parts[0].text,
+    prompt,
     /Respond in Tamil only, regardless of the language used in the\s+user's question or catalog content/,
   );
   assert.match(
-    providerRequest.systemInstruction.parts[0].text,
+    prompt,
     /selected response language is\s+authoritative for every explanation, step, caveat, and refusal/i,
   );
-  assert.match(
-    providerRequest.systemInstruction.parts[0].text,
-    /cannot reliably confirm/i,
-  );
-  assert.match(
-    providerRequest.systemInstruction.parts[0].text,
-    /Only answer questions related to Indian government services/,
-  );
-  assert.match(
-    providerRequest.systemInstruction.parts[0].text,
-    /Official URL: https:\/\/example\.gov\.in/,
-  );
-  assert.equal(providerModel, "gemini-3.6-flash");
-  assert.equal(
-    providerRequest.contents[0].parts[0].text,
-    "What documents are needed for Aadhaar?",
-  );
+  assert.match(prompt, /cannot\s+reliably\s+confirm/i);
+  assert.match(prompt, /clarifying\s+question/i);
+  assert.match(prompt, /Never\s+invent\s+scheme\s+names/);
+  assert.match(prompt, /Do not use Markdown/);
+  assert.match(prompt, /Only answer questions related to Indian government services/);
+  assert.match(prompt, /Official URL: https:\/\/example\.gov\.in/);
+  assert.deepEqual(providerRequest.messages[1], {
+    role: "user",
+    content: "What documents are needed for Aadhaar?",
+  });
+});
+
+test("reads the model from GROQ_MODEL", async () => {
+  let providerRequest;
+  global.fetch = async (_url, options) => {
+    providerRequest = JSON.parse(options.body);
+    return groqResponse();
+  };
+
+  process.env.GROQ_MODEL = "openai/gpt-oss-120b";
+  try {
+    const response = await post({ question: "How do I apply?" });
+    assert.equal(response.status, 200);
+    assert.equal(providerRequest.model, "openai/gpt-oss-120b");
+  } finally {
+    process.env.GROQ_MODEL = "openai/gpt-oss-20b";
+  }
+});
+
+test("rejects a malformed GROQ_MODEL without calling Groq", async () => {
+  let providerCalled = false;
+  global.fetch = async () => {
+    providerCalled = true;
+    return groqResponse();
+  };
+
+  process.env.GROQ_MODEL = "openai/gpt-oss-20b;";
+  try {
+    const response = await post({ question: "How do I apply?" });
+    assert.equal(response.status, 503);
+    assert.equal((await response.json()).error.code, "AI_NOT_CONFIGURED");
+    assert.equal(providerCalled, false);
+  } finally {
+    process.env.GROQ_MODEL = "openai/gpt-oss-20b";
+  }
+});
+
+test("returns AI_NOT_CONFIGURED when GROQ_API_KEY is missing", async () => {
+  let providerCalled = false;
+  global.fetch = async () => {
+    providerCalled = true;
+    return groqResponse();
+  };
+
+  const apiKey = process.env.GROQ_API_KEY;
+  delete process.env.GROQ_API_KEY;
+  try {
+    const response = await post({ question: "How do I apply?" });
+    assert.equal(response.status, 503);
+    assert.deepEqual((await response.json()).error, {
+      code: "AI_NOT_CONFIGURED",
+      message: "The AI service is not configured.",
+      retryable: false,
+    });
+    assert.equal(providerCalled, false);
+  } finally {
+    process.env.GROQ_API_KEY = apiKey;
+  }
 });
 
 test("maps every supported language code to the response-language instruction", async () => {
@@ -188,7 +256,7 @@ test("maps every supported language code to the response-language instruction", 
   let providerRequest;
   global.fetch = async (_url, options) => {
     providerRequest = JSON.parse(options.body);
-    return geminiResponse();
+    return groqResponse();
   };
 
   for (const languageCode of supportedLanguages) {
@@ -199,7 +267,7 @@ test("maps every supported language code to the response-language instruction", 
 
     assert.equal(response.status, 200, `language code: ${languageCode}`);
     assert.ok(
-      providerRequest.systemInstruction.parts[0].text.includes(
+      systemPrompt(providerRequest).includes(
         `Respond in ${RESPONSE_LANGUAGES[languageCode]} only`,
       ),
       `missing response-language instruction for ${languageCode}`,
@@ -211,73 +279,71 @@ test("defaults a missing language to English for older clients", async () => {
   let providerRequest;
   global.fetch = async (_url, options) => {
     providerRequest = JSON.parse(options.body);
-    return geminiResponse();
+    return groqResponse();
   };
 
   const response = await post({ question: "How do I apply?" });
 
   assert.equal(response.status, 200);
-  assert.match(
-    providerRequest.systemInstruction.parts[0].text,
-    /Respond in English/,
-  );
-  assert.doesNotMatch(
-    providerRequest.systemInstruction.parts[0].text,
-    /undefined/,
-  );
+  assert.match(systemPrompt(providerRequest), /Respond in English/);
+  assert.doesNotMatch(systemPrompt(providerRequest), /undefined/);
 });
 
-test("retries a temporary Gemini 503 and preserves a successful response", async () => {
-  let attempts = 0;
-  global.fetch = async () => {
-    attempts += 1;
-    return attempts === 1
-      ? geminiResponse("", 503)
-      : geminiResponse("Verify current details at the official portal.");
+test("keeps large catalogs within Groq token limits using relevant rows", async () => {
+  const filler = Array.from(
+    { length: 125 },
+    (_, index) =>
+      `Filler service ${index} | Other | ${"Unrelated description. ".repeat(12)}| https://filler${index}.gov.in/ | Anyone. | Varies.`,
+  );
+  const passportRow =
+    "Passport Seva | Travel | Apply for or renew an Indian passport. | https://www.passportindia.gov.in/ | Indian citizens. | Proof of address and date of birth.";
+  const serviceContext = [...filler.slice(0, 60), passportRow, ...filler.slice(60)].join("\n");
+  assert.ok(serviceContext.length > 40_000);
+
+  const matched = selectServiceContext("How do I renew my passport?", serviceContext);
+  assert.ok(matched.matched.includes(passportRow));
+  assert.ok(matched.matched.length + matched.index.length <= 8_000);
+
+  const unmatched = selectServiceContext("पासपोर्ट कैसे बनवाएं?", serviceContext);
+  assert.equal(unmatched.matched, "");
+  assert.match(unmatched.index, /Passport Seva \| Travel \| https:\/\/www\.passportindia\.gov\.in\//);
+  assert.ok(unmatched.index.length <= 8_000);
+
+  let providerRequest;
+  global.fetch = async (_url, options) => {
+    providerRequest = JSON.parse(options.body);
+    return groqResponse("Use the official passport portal.");
   };
+  const response = await post({
+    question: "How do I renew my passport?",
+    serviceContext,
+  });
+  assert.equal(response.status, 200);
+  assert.ok(systemPrompt(providerRequest).includes(passportRow));
+  assert.ok(systemPrompt(providerRequest).length < 14_000);
+});
 
-  const response = await post({ question: "How do I apply?", language: "en" });
+test("strips hidden reasoning tags from the answer", async () => {
+  global.fetch = async () =>
+    groqResponse("<think>internal notes</think>\nVisit the official portal.");
 
+  const response = await post({ question: "How do I apply?" });
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), {
-    content: "Verify current details at the official portal.",
+    content: "Visit the official portal.",
   });
-  assert.equal(attempts, 2);
 });
 
-test("sends a 504 directly to the fallback model without retrying the timed-out model", async () => {
-  const requestedModels = [];
-  const startedAt = Date.now();
-  global.fetch = async (url) => {
-    const model = modelFromUrl(url);
-    requestedModels.push(model);
-    return model === "gemini-3.6-flash"
-      ? geminiResponse(
-          "",
-          504,
-          "Deadline expired before operation could complete.",
-        )
-      : geminiResponse("Check the relevant official government portal.");
-  };
-
-  const response = await post({ question: "How do I check a service?" });
-
-  assert.equal(response.status, 200);
-  assert.deepEqual(requestedModels, [
-    "gemini-3.6-flash",
-    "gemini-3.5-flash-lite",
-  ]);
-  assert.ok(Date.now() - startedAt < 2_000);
-});
-
-test("retries temporary 429, 500, and 502 provider responses", async () => {
-  for (const status of [429, 500, 502]) {
+test("retries temporary 429, 500, 502, and 503 provider responses", async () => {
+  for (const status of [429, 500, 502, 503]) {
     let attempts = 0;
     global.fetch = async () => {
       attempts += 1;
       return attempts === 1
-        ? geminiResponse("", status, "temporary provider failure")
-        : geminiResponse("Check the relevant official government portal.");
+        ? groqResponse("", status, "temporary provider failure", {
+            retryAfter: "0",
+          })
+        : groqResponse("Check the relevant official government portal.");
     };
 
     const response = await post({ question: "How do I check a service?" });
@@ -290,60 +356,36 @@ test("retries temporary 429, 500, and 502 provider responses", async () => {
   }
 });
 
-test("uses no more than one fallback retry when Gemini stays overloaded", async () => {
-  const requestedModels = [];
-  const requestSignals = [];
-  global.fetch = async (url, options) => {
-    const model = modelFromUrl(url);
-    requestedModels.push(model);
-    requestSignals.push(options.signal);
-    return model === "gemini-3.6-flash"
-      ? geminiResponse("", 503)
-      : geminiResponse("Check the relevant official government portal.");
-  };
-
-  const response = await post({ question: "How do I check a service?" });
-
-  assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), {
-    content: "Check the relevant official government portal.",
-  });
-  assert.deepEqual(requestedModels, [
-    "gemini-3.6-flash",
-    "gemini-3.5-flash-lite",
-  ]);
-  assert.ok(requestSignals.every((signal) => signal instanceof AbortSignal));
-  assert.equal(new Set(requestSignals).size, requestSignals.length);
-});
-
 test("does not retry sooner than a long provider retry-after hint", async () => {
-  const requestedModels = [];
-  global.fetch = async (url) => {
-    const model = modelFromUrl(url);
-    requestedModels.push(model);
-    return model === "gemini-3.6-flash"
-      ? geminiResponse("", 503, "provider unavailable", {
-          retryAfter: "30",
-        })
-      : geminiResponse("Use the official passport portal.");
+  let attempts = 0;
+  global.fetch = async () => {
+    attempts += 1;
+    return groqResponse("", 429, "Rate limit reached for model on tokens per minute (TPM)", {
+      retryAfter: "30",
+      code: "rate_limit_exceeded",
+      type: "tokens",
+    });
   };
 
   const response = await post({ question: "Where do I apply for a passport?" });
 
-  assert.equal(response.status, 503);
+  assert.equal(response.status, 429);
   assert.deepEqual((await response.json()).error, {
-    code: "AI_TEMPORARILY_UNAVAILABLE",
-    message: "The AI service is temporarily unavailable.",
+    code: "AI_RATE_LIMITED",
+    message: "The AI service is rate limited.",
     retryable: true,
   });
-  assert.deepEqual(requestedModels, ["gemini-3.6-flash"]);
+  assert.equal(attempts, 1);
 });
 
-test("does not retry invalid credentials or exhausted quota", async () => {
+test("does not retry invalid credentials, daily quota, or missing models", async () => {
   let attempts = 0;
   global.fetch = async () => {
     attempts += 1;
-    return geminiResponse("", 403, "API key invalid or permission denied");
+    return groqResponse("", 401, "Invalid API Key", {
+      code: "invalid_api_key",
+      type: "invalid_request_error",
+    });
   };
 
   const invalidKey = await post({ question: "How do I apply?" });
@@ -358,7 +400,10 @@ test("does not retry invalid credentials or exhausted quota", async () => {
   attempts = 0;
   global.fetch = async () => {
     attempts += 1;
-    return geminiResponse("", 429, "Quota exceeded for this project");
+    return groqResponse("", 429, "Rate limit reached on tokens per day (TPD)", {
+      retryAfter: "0",
+      code: "rate_limit_exceeded",
+    });
   };
 
   const quota = await post({ question: "How do I apply?" });
@@ -369,13 +414,30 @@ test("does not retry invalid credentials or exhausted quota", async () => {
     retryable: false,
   });
   assert.equal(attempts, 1);
+
+  attempts = 0;
+  global.fetch = async () => {
+    attempts += 1;
+    return groqResponse("", 404, "The model does not exist", {
+      code: "model_not_found",
+    });
+  };
+
+  const missingModel = await post({ question: "How do I apply?" });
+  assert.equal(missingModel.status, 503);
+  assert.deepEqual((await missingModel.json()).error, {
+    code: "AI_NOT_CONFIGURED",
+    message: "The configured AI model is unavailable.",
+    retryable: false,
+  });
+  assert.equal(attempts, 1);
 });
 
-test("does not retry malformed provider requests or leak API keys in logs", async () => {
+test("does not retry rejected or oversized provider requests", async () => {
   let attempts = 0;
   global.fetch = async () => {
     attempts += 1;
-    return geminiResponse("", 400, "Invalid request format");
+    return groqResponse("", 400, "Invalid request format");
   };
 
   const malformed = await post({ question: "How do I apply?" });
@@ -387,37 +449,56 @@ test("does not retry malformed provider requests or leak API keys in logs", asyn
   });
   assert.equal(attempts, 1);
 
-  const originalKey = process.env.GEMINI_API_KEY;
+  attempts = 0;
+  global.fetch = async () => {
+    attempts += 1;
+    return groqResponse("", 413, "Request too large for model", {
+      code: "rate_limit_exceeded",
+      type: "tokens",
+    });
+  };
+
+  const tooLarge = await post({ question: "How do I apply?" });
+  assert.equal(tooLarge.status, 503);
+  assert.deepEqual((await tooLarge.json()).error, {
+    code: "AI_REQUEST_TOO_LARGE",
+    message: "The request is too large for the AI service.",
+    retryable: false,
+  });
+  assert.equal(attempts, 1);
+});
+
+test("never leaks the API key in logs or responses", async () => {
+  const originalKey = process.env.GROQ_API_KEY;
   const originalConsoleError = console.error;
-  const testKey = "AIzaSyTestFakeSecret01234567890123456789";
+  const testKey = "gsk_TestFakeSecret0123456789012345678901234567";
   let loggedOutput = "";
-  process.env.GEMINI_API_KEY = testKey;
+  process.env.GROQ_API_KEY = testKey;
   console.error = (...args) => {
     loggedOutput += `${args.join(" ")}\n`;
   };
   global.fetch = async () =>
-    geminiResponse("", 503, `Key ${testKey} rejected`, {
-      retryAfter: "0",
-      retryInfo: "0s",
-    });
+    groqResponse("", 503, `Key ${testKey} rejected`, { retryAfter: "0" });
 
+  let body;
   try {
     const unavailable = await post({ question: "How do I apply?" });
     assert.equal(unavailable.status, 503);
-    assert.deepEqual((await unavailable.json()).error, {
+    body = await unavailable.text();
+    assert.deepEqual(JSON.parse(body).error, {
       code: "AI_TEMPORARILY_UNAVAILABLE",
       message: "The AI service is temporarily unavailable.",
       retryable: true,
     });
   } finally {
-    process.env.GEMINI_API_KEY = originalKey;
+    process.env.GROQ_API_KEY = originalKey;
     console.error = originalConsoleError;
   }
 
   assert.equal(loggedOutput.includes(testKey), false);
+  assert.equal(body.includes(testKey), false);
   assert.match(loggedOutput, /HTTP 503/);
   assert.match(loggedOutput, /retry-after=0/);
-  assert.match(loggedOutput, /retry-info=0s/);
   assert.match(loggedOutput, /\[redacted\]/);
 });
 
@@ -425,10 +506,8 @@ test("retries temporary network errors before returning a response", async () =>
   let attempts = 0;
   global.fetch = async () => {
     attempts += 1;
-    if (attempts < 2) throw new TypeError("temporary network failure");
-    return geminiResponse(
-      "Use the official portal to verify the latest details.",
-    );
+    if (attempts < 2) throw new TypeError("fetch failed");
+    return groqResponse("Use the official portal to verify the latest details.");
   };
 
   const response = await post({ question: "How do I check a service?" });
@@ -486,11 +565,11 @@ test("aborts the provider request when the client disconnects", async () => {
   assert.equal(providerSignal.aborted, true);
 });
 
-test("rejects malformed JSON and unsupported languages without calling Gemini", async () => {
+test("rejects malformed JSON and unsupported languages without calling Groq", async () => {
   let providerCalled = false;
   global.fetch = async () => {
     providerCalled = true;
-    return geminiResponse();
+    return groqResponse();
   };
 
   const malformed = await post("{", true);
@@ -537,12 +616,12 @@ test("rejects non-object bodies, invalid question types, and oversized input", a
   assert.equal(largeContext.status, 413);
 });
 
-test("returns an upstream error for Gemini failures, timeouts, and empty output", async () => {
+test("returns an upstream error for Groq failures, timeouts, and empty output", async () => {
   let attempts = 0;
   const startedAt = Date.now();
   global.fetch = async () => {
     attempts += 1;
-    return geminiResponse("", 503);
+    return groqResponse("", 503);
   };
   const providerError = await post({ question: "Question", language: "en" });
   assert.equal(providerError.status, 503);
@@ -554,20 +633,26 @@ test("returns an upstream error for Gemini failures, timeouts, and empty output"
   });
   assert.ok(Date.now() - startedAt < 8_000);
 
+  attempts = 0;
   global.fetch = async () => {
     attempts += 1;
     throw new DOMException("The operation timed out", "TimeoutError");
   };
   const timeout = await post({ question: "Question", language: "en" });
   assert.equal(timeout.status, 503);
-  assert.equal(attempts, 4);
+  assert.deepEqual((await timeout.json()).error, {
+    code: "AI_TIMEOUT",
+    message: "The AI service did not respond in time.",
+    retryable: true,
+  });
+  assert.equal(attempts, 1);
 
-  global.fetch = async () => geminiResponse("  ");
+  global.fetch = async () => groqResponse("  ");
   const empty = await post({ question: "Question", language: "en" });
   assert.equal(empty.status, 503);
   assert.deepEqual((await empty.json()).error, {
     code: "AI_EMPTY_RESPONSE",
-    message: "Gemini returned an empty response.",
+    message: "The AI service returned an empty response.",
     retryable: false,
   });
 });

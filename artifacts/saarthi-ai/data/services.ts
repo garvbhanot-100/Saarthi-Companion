@@ -26,6 +26,9 @@ type ServiceCategory =
   | "Citizen Services"
   | "Safety & Security"
   | "Public Grievance";
+// What the official link leads to. Records without a linkType are shown as a
+// general official website; only mark "application" or "forms" once verified.
+export type OfficialLinkType = "information" | "application" | "forms" | "website";
 export interface ServiceRecord {
   id: string;
   name: string;
@@ -35,6 +38,7 @@ export interface ServiceRecord {
   documents: string;
   source: string;
   officialUrl: string;
+  linkType?: OfficialLinkType;
   lastVerified: string;
 }
 export const services: ServiceRecord[] = [
@@ -920,9 +924,10 @@ export const services: ServiceRecord[] = [
       "The scheme is intended for eligible bank account holders as per the current government rules.",
     documents:
       "Bank account and identity information are usually required during enrolment and verification.",
-    source: "pmjjby.gov.in",
-    officialUrl: "https://pmjjby.gov.in/",
-    lastVerified: "Official government source recorded for reference",
+    source: "financialservices.gov.in",
+    officialUrl: "https://financialservices.gov.in/pmjjby",
+    linkType: "information",
+    lastVerified: "Official scheme information page checked November 2026",
   },
   {
     id: "pmsby",
@@ -934,9 +939,10 @@ export const services: ServiceRecord[] = [
       "Eligible account holders can review current scheme conditions on the official portal.",
     documents:
       "Identity proof, bank details, and account linkage information are typically required.",
-    source: "pmsby.gov.in",
-    officialUrl: "https://pmsby.gov.in/",
-    lastVerified: "Official government source recorded for reference",
+    source: "financialservices.gov.in",
+    officialUrl: "https://financialservices.gov.in/pmsby",
+    linkType: "information",
+    lastVerified: "Official scheme information page checked November 2026",
   },
   {
     id: "apprenticeship-resources",
@@ -978,7 +984,8 @@ export const services: ServiceRecord[] = [
       "Land records, crop details, identity proof, and bank information may be required for claim or coverage support.",
     source: "pmfby.gov.in",
     officialUrl: "https://pmfby.gov.in/",
-    lastVerified: "Official government source recorded for reference",
+    linkType: "information",
+    lastVerified: "Official scheme website checked November 2026",
   },
   {
     id: "soil-health-card",

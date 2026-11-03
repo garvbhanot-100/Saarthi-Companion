@@ -1,11 +1,22 @@
-import { services } from "@/data/services";
+import { services, type OfficialLinkType, type ServiceRecord } from "@/data/services";
 import type { LanguageCode } from "@/context/LanguagesContext";
 import Constants from "expo-constants";
 
+export interface AssistantSource {
+  label: string;
+  url: string;
+  type?: OfficialLinkType;
+}
+
 export interface AssistantReply {
   content: string;
-  sources: { label: string; url: string }[];
+  sources: AssistantSource[];
 }
+
+export type ContentSegment =
+  | { kind: "text"; text: string }
+  | { kind: "link"; text: string; url: string }
+  | { kind: "unverified-link"; text: string };
 
 const configuredApiUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
 const expoHost = Constants.expoConfig?.hostUri?.split(":")[0];
@@ -13,10 +24,136 @@ const API_URL = (
   configuredApiUrl || `http://${expoHost || "localhost"}:3000`
 ).replace(/\/+$/, "");
 
-const toSource = (service: any) => ({
+// Absolute http(s) URL with a plain hostname: no credentials, whitespace,
+// quotes or angle brackets. Checked without `URL`, whose React Native
+// implementation does not expose every component.
+const SAFE_HTTP_URL =
+  /^https?:\/\/(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}(?::\d{1,5})?(?:[/?#][^\s<>"'`\\]*)?$/i;
+
+export function isSafeHttpUrl(url: unknown): url is string {
+  return typeof url === "string" && url.length <= 2048 && SAFE_HTTP_URL.test(url);
+}
+
+// Comparison key only: ignores scheme, "www.", host case and trailing slashes.
+// Links are always opened with the catalog's exact URL, never this key.
+const normalizeUrl = (url: string) =>
+  url
+    .trim()
+    .replace(/^https?:\/\/(?:www\.)?([^/?#]+)/i, (_, host: string) => `//${host.toLowerCase()}`)
+    .replace(/\/+$/, "");
+
+const serviceByUrl = new Map<string, ServiceRecord>();
+for (const service of services) {
+  if (isSafeHttpUrl(service.officialUrl)) {
+    serviceByUrl.set(normalizeUrl(service.officialUrl), service);
+  }
+}
+
+// Returns the catalog's own copy of a URL, or undefined when the URL is not
+// one of Saarthi's recorded official links.
+export function findVerifiedUrl(url: string): string | undefined {
+  if (!isSafeHttpUrl(url)) return undefined;
+  return serviceByUrl.get(normalizeUrl(url))?.officialUrl;
+}
+
+const URL_IN_TEXT = /\b(?:https?:\/\/|www\.)[^\s<>"'`]+/gi;
+
+// Splits assistant text so recorded official URLs can be shown as links and
+// any other URL the model wrote is visibly withheld instead of opened.
+export function splitContentLinks(content: string): ContentSegment[] {
+  const segments: ContentSegment[] = [];
+  let last = 0;
+  for (const match of content.matchAll(URL_IN_TEXT)) {
+    let raw = match[0];
+    const trailing = raw.match(/[).,;:!?*_\]]+$/)?.[0] ?? "";
+    raw = raw.slice(0, raw.length - trailing.length);
+    const start = match.index ?? 0;
+    if (start > last) {
+      segments.push({ kind: "text", text: content.slice(last, start) });
+    }
+    const candidate = /^www\./i.test(raw) ? `https://${raw}` : raw;
+    const verified = findVerifiedUrl(candidate);
+    segments.push(
+      verified
+        ? { kind: "link", text: raw, url: verified }
+        : { kind: "unverified-link", text: raw },
+    );
+    last = start + raw.length;
+  }
+  if (last < content.length) {
+    segments.push({ kind: "text", text: content.slice(last) });
+  }
+  return segments;
+}
+
+const toSource = (service: ServiceRecord): AssistantSource => ({
   label: service.source,
   url: service.officialUrl,
+  type: service.linkType ?? "website",
 });
+
+// Re-reads a stored source from the current catalog, so chats saved before a
+// link was corrected never open the outdated URL.
+export function findOfficialSource(url: string): AssistantSource | undefined {
+  if (!isSafeHttpUrl(url)) return undefined;
+  const service = serviceByUrl.get(normalizeUrl(url));
+  return service ? toSource(service) : undefined;
+}
+
+const STOP_WORDS = new Set(
+  (
+    "about after also and any apply applying application are can could does " +
+    "document documents for from get government have how india indian into " +
+    "know mantri need needed official online pradhan please scheme schemes " +
+    "service services tell that the their there this under want what when " +
+    "where which who why will with yojana your"
+  ).split(" "),
+);
+
+const tokenize = (text: string) =>
+  text
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((word) => word.length >= 3 && !STOP_WORDS.has(word))
+    .map((word) => (word.length > 4 ? word.replace(/s$/, "") : word));
+
+const serviceKeywords = services.map((service) => ({
+  service,
+  strong: new Set(
+    tokenize(`${service.id.replaceAll("-", " ")} ${service.name} ${service.source}`),
+  ),
+  weak: new Set(tokenize(`${service.category} ${service.description}`)),
+}));
+
+// Official links for a reply: catalog URLs the reply itself cites come first,
+// then services whose name, id, or domain best match the question.
+function findSources(question: string, content: string): AssistantSource[] {
+  const cited: ServiceRecord[] = [];
+  for (const segment of splitContentLinks(content)) {
+    if (segment.kind !== "link") continue;
+    const service = serviceByUrl.get(normalizeUrl(segment.url));
+    if (service && !cited.includes(service)) cited.push(service);
+  }
+
+  const words = new Set(tokenize(question));
+  const scored = serviceKeywords.map(({ service, strong, weak }) => {
+    let score = 0;
+    for (const word of words) {
+      if (strong.has(word)) score += 3;
+      else if (weak.has(word)) score += 1;
+    }
+    return { service, score };
+  });
+  // A named scheme ("Suraksha Bima") outranks schemes sharing a generic word
+  // ("Bima"); a generic question still lists every matching scheme.
+  const best = Math.max(0, ...scored.map(({ score }) => score));
+  const matched = scored
+    .filter(({ score }) => score >= 2 && score > best / 2)
+    .sort((a, b) => b.score - a.score)
+    .map(({ service }) => service);
+
+  return [...new Set([...cited, ...matched])].slice(0, 3).map(toSource);
+}
 
 export async function getAssistantReply(
   question: string,
@@ -39,7 +176,8 @@ export async function getAssistantReply(
 
   let response: Response;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 35_000);
+  // Generous enough to cover a cold start of the hosted backend.
+  const timeout = setTimeout(() => controller.abort(), 75_000);
   try {
     response = await fetch(`${API_URL}/api/assistant`, {
       method: "POST",
@@ -83,27 +221,8 @@ export async function getAssistantReply(
     throw new Error("The assistant service returned an empty response.");
   }
 
-  // Find services related to the user's question
-  const q = question.toLowerCase();
-
-  const matchedServices = services.filter((service) => {
-    const text = `
-        ${service.name}
-        ${service.category}
-        ${service.description}
-      `.toLowerCase();
-
-    return (
-      text.includes(q) ||
-      q.split(" ").some((word) => {
-        if (word.length < 4) return false;
-        return text.includes(word);
-      })
-    );
-  });
-
   return {
     content: data.content,
-    sources: matchedServices.slice(0, 3).map(toSource),
+    sources: findSources(question, data.content),
   };
 }

@@ -52,3 +52,15 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+
+# Saarthi AI (Expo). On Windows, EAS CLI does not apply nested .gitignore files
+# when it packs a build, so the rules that must never reach EAS live here too.
+artifacts/saarthi-ai/android
+artifacts/saarthi-ai/ios
+artifacts/saarthi-ai/**/*.jks
+artifacts/saarthi-ai/**/*.keystore
+artifacts/saarthi-ai/**/*.p8
+artifacts/saarthi-ai/**/*.p12
+artifacts/saarthi-ai/**/*.key
+artifacts/saarthi-ai/**/*.mobileprovision
+artifacts/saarthi-ai/**/*.pem

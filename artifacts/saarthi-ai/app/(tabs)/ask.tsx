@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 
 
 import {
+  Alert,
   FlatList,
   Linking,
   StyleSheet,
@@ -15,7 +16,6 @@ import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { IconButton } from "@/components/UI";
-import {ExpoSpeechRecognitionModule,useSpeechRecognitionEvent,} from "expo-speech-recognition";
 import {
   FadeInView,
   MotionPressable,
@@ -24,9 +24,31 @@ import {
 import { ChatMessage, useSaarthi } from "@/context/SaarthiContext";
 import { useColors } from "@/hooks/useColors";
 import { useLanguage } from "@/context/LanguagesContext";
-import { getAssistantReply } from "@/services/assistant";
+import type { TranslationKey } from "@/constants/translations";
+import type { OfficialLinkType } from "@/data/services";
+import {
+  findOfficialSource,
+  getAssistantReply,
+  isSafeHttpUrl,
+  splitContentLinks,
+} from "@/services/assistant";
+import { SpeechRecognition, useSpeechEvent } from "@/services/speech";
 
 type PromptKey = "askPromptPan" | "askPromptScholarship" | "askPromptAadhaar";
+
+const SOURCE_TYPE_KEYS: Record<OfficialLinkType, TranslationKey> = {
+  information: "sourceTypeInformation",
+  application: "sourceTypeApplication",
+  forms: "sourceTypeForms",
+  website: "sourceTypeWebsite",
+};
+
+const openOfficialUrl = (url: string) => {
+  if (!isSafeHttpUrl(url)) return;
+  Linking.openURL(url).catch((error) => {
+    console.warn("Could not open official link:", error);
+  });
+};
 
 const PROMPT_KEYS: { id: string; key: PromptKey }[] = [
   { id: "pan", key: "askPromptPan" },
@@ -46,25 +68,127 @@ function Bubble({
   const c = useColors();
   const { t } = useLanguage();
   const isUser = m.role === "user";
+  const sources = isUser
+    ? []
+    : (m.sources ?? []).flatMap((source) => {
+        const official = findOfficialSource(source.url);
+        return official ? [official] : [];
+      });
 
   return (
-    <View
-  style={[
-    s.avatar,
-    { backgroundColor: isUser ? c.primary : c.primarySoft },
-  ]}
->
-  {isUser ? (
-    <Feather name="user" size={18} color={c.foreground} />
-  ) : (
-    <Image
-      source={require("../../assets/images/images-2/Saarthi-AI Images.jpeg")}
-      style={{ width: 24, height: 24 }}
-      resizeMode="contain"
-    />
-  )}
-</View>
-   
+    <View style={[s.message, isUser && s.user]}>
+      <View
+        style={[
+          s.avatar,
+          { backgroundColor: isUser ? c.primary : c.primarySoft },
+        ]}
+      >
+        {isUser ? (
+          <Feather name="user" size={18} color={c.foreground} />
+        ) : (
+          <Image
+            source={require("../../assets/images/images-2/Saarthi-AI Images.jpeg")}
+            style={{ width: 24, height: 24 }}
+            resizeMode="contain"
+          />
+        )}
+      </View>
+
+      <View
+        style={[
+          s.bubble,
+          {
+            backgroundColor: isUser ? c.primary : c.card,
+            borderColor: m.isError
+              ? c.destructive
+              : isUser
+                ? c.primary
+                : c.border,
+          },
+        ]}
+      >
+        <Text
+          selectable
+          style={[
+            s.messageText,
+            { color: isUser ? c.primaryForeground : c.foreground },
+          ]}
+        >
+          {isUser
+            ? m.content
+            : splitContentLinks(m.content).map((segment, index) =>
+                segment.kind === "link" ? (
+                  <Text
+                    key={index}
+                    accessibilityRole="link"
+                    onPress={() => openOfficialUrl(segment.url)}
+                    style={[s.inlineLink, { color: c.primary }]}
+                  >
+                    {segment.text}
+                  </Text>
+                ) : segment.kind === "unverified-link" ? (
+                  <Text key={index} style={{ color: c.mutedForeground }}>
+                    {t("askUnverifiedLinkRemoved")}
+                  </Text>
+                ) : (
+                  segment.text
+                ),
+              )}
+        </Text>
+
+        {sources.length ? (
+          <>
+            <Text style={[s.sources, { color: c.mutedForeground }]}>
+              {t("officialSources")}
+            </Text>
+            {sources.map((source, index) => {
+              const typeLabel = t(SOURCE_TYPE_KEYS[source.type ?? "website"]);
+              return (
+                <MotionPressable
+                  key={`${source.url}-${index}`}
+                  accessibilityRole="link"
+                  accessibilityLabel={`${source.label}, ${typeLabel}`}
+                  onPress={() => openOfficialUrl(source.url)}
+                  style={[s.source, { backgroundColor: c.primarySoft }]}
+                >
+                  <Feather name="external-link" size={13} color={c.primary} />
+                  <Text
+                    numberOfLines={1}
+                    style={[s.sourceText, { color: c.primary }]}
+                  >
+                    {source.label}
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    style={[s.sourceType, { color: c.mutedForeground }]}
+                  >
+                    {typeLabel}
+                  </Text>
+                </MotionPressable>
+              );
+            })}
+          </>
+        ) : null}
+
+        {onRetry ? (
+          <MotionPressable
+            accessibilityRole="button"
+            accessibilityLabel="Retry"
+            disabled={retryDisabled}
+            onPress={onRetry}
+            style={[
+              s.retry,
+              {
+                backgroundColor: c.primarySoft,
+                opacity: retryDisabled ? 0.35 : 1,
+              },
+            ]}
+          >
+            <Feather name="rotate-ccw" size={15} color={c.primary} />
+          </MotionPressable>
+        ) : null}
+      </View>
+    </View>
   );
 }
 
@@ -95,25 +219,30 @@ export default function Ask() {
   );
 
   const input = useRef<TextInput>(null);
-  useSpeechRecognitionEvent("start", () => {
-  setIsListening(true);
-});
+  useSpeechEvent("start", () => {
+    setIsListening(true);
+  });
 
-useSpeechRecognitionEvent("end", () => {
-  setIsListening(false);
-});
+  useSpeechEvent("end", () => {
+    setIsListening(false);
+  });
 
-useSpeechRecognitionEvent("result", (event) => {
-  const transcript = event.results[0]?.transcript;
+  useSpeechEvent("result", (event) => {
+    const transcript = event.results[0]?.transcript;
 
-  if (transcript) {
-    setText(transcript);
-  }
-});
+    if (transcript) {
+      setText(transcript);
+    }
+  });
 
-useSpeechRecognitionEvent("error", () => {
-  setIsListening(false);
-});
+  useSpeechEvent("error", () => {
+    setIsListening(false);
+  });
+
+  // Follow chats opened from the Profile tab while this screen stays mounted.
+  useEffect(() => {
+    if (activeChatId) setSid(activeChatId);
+  }, [activeChatId]);
 
   useEffect(() => {
     if (!sid) {
@@ -145,7 +274,8 @@ useSpeechRecognitionEvent("error", () => {
         content: response.content,
         sources: response.sources,
       });
-    } catch {
+    } catch (error) {
+      console.warn("Assistant request failed:", error);
       appendMessage(sid, {
         role: "assistant",
         content: t("askError"),
@@ -178,29 +308,35 @@ useSpeechRecognitionEvent("error", () => {
   };
 
   const toggleListening = async () => {
-  if (isListening) {
-    ExpoSpeechRecognitionModule.stop();
-    return;
-  }
-
-  try {
-    const permission =
-      await ExpoSpeechRecognitionModule.requestPermissionsAsync();
-
-    if (!permission.granted) {
+    if (!SpeechRecognition) {
+      Alert.alert(
+        "Voice input unavailable",
+        "Voice input works in the installed Saarthi AI app. Please type your question here.",
+      );
+      return;
+    }
+    if (isListening) {
+      SpeechRecognition.stop();
       return;
     }
 
-    ExpoSpeechRecognitionModule.start({
-      lang: language,
-      interimResults: true,
-      continuous: false,
-    });
-  } catch (error) {
-    console.warn("Speech recognition error:", error);
-    setIsListening(false);
-  }
-};
+    try {
+      const permission = await SpeechRecognition.requestPermissionsAsync();
+
+      if (!permission.granted) {
+        return;
+      }
+
+      SpeechRecognition.start({
+        lang: `${language}-IN`,
+        interimResults: true,
+        continuous: false,
+      });
+    } catch (error) {
+      console.warn("Speech recognition error:", error);
+      setIsListening(false);
+    }
+  };
 
   return (
     <KeyboardAvoidingView
@@ -508,6 +644,17 @@ const s = StyleSheet.create({
   sourceText: {
     fontFamily: "Inter_600SemiBold",
     fontSize: 11,
+    flexShrink: 1,
+  },
+  sourceType: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 10,
+    marginLeft: "auto",
+    paddingLeft: 6,
+  },
+  inlineLink: {
+    fontFamily: "Inter_600SemiBold",
+    textDecorationLine: "underline",
   },
   typing: {
     flexDirection: "row",
