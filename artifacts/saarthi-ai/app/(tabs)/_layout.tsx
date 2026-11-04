@@ -7,9 +7,10 @@ import { Tabs } from "expo-router";
 import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
 import { SymbolView } from "expo-symbols";
 
+import { AuthGate } from "@/components/AuthGate";
 import { MotionProvider } from "@/components/Motion";
-import { useColors } from "@/hooks/useColors";
 import { useLanguage } from "@/context/LanguagesContext";
+import { useColors } from "@/hooks/useColors";
 
 function Native() {
   const { t } = useLanguage();
@@ -128,8 +129,10 @@ function Classic() {
 
 export default function TabLayout() {
   return (
-    <MotionProvider>
-      {isLiquidGlassAvailable() ? <Native /> : <Classic />}
-    </MotionProvider>
+    <AuthGate>
+      <MotionProvider>
+        {isLiquidGlassAvailable() ? <Native /> : <Classic />}
+      </MotionProvider>
+    </AuthGate>
   );
 }

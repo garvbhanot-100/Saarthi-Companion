@@ -1,31 +1,29 @@
 import { Feather } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-
-
 import {
   Alert,
   FlatList,
+  Image,
   Linking,
   StyleSheet,
   Text,
   TextInput,
-  Image,
   View,
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { IconButton } from "@/components/UI";
 import {
   FadeInView,
   MotionPressable,
   TypingIndicator,
 } from "@/components/Motion";
-import { ChatMessage, useSaarthi } from "@/context/SaarthiContext";
-import { useColors } from "@/hooks/useColors";
-import { useLanguage } from "@/context/LanguagesContext";
 import type { TranslationKey } from "@/constants/translations";
+import { useLanguage } from "@/context/LanguagesContext";
+import { ChatMessage, useSaarthi } from "@/context/SaarthiContext";
 import type { OfficialLinkType } from "@/data/services";
+import { useColors } from "@/hooks/useColors";
 import {
   findOfficialSource,
   getAssistantReply,
@@ -43,6 +41,16 @@ const SOURCE_TYPE_KEYS: Record<OfficialLinkType, TranslationKey> = {
   website: "sourceTypeWebsite",
 };
 
+const PROMPT_KEYS: {
+  id: string;
+  key: PromptKey;
+  icon: React.ComponentProps<typeof Feather>["name"];
+}[] = [
+  { id: "pan", key: "askPromptPan", icon: "credit-card" },
+  { id: "scholarship", key: "askPromptScholarship", icon: "book-open" },
+  { id: "aadhaar", key: "askPromptAadhaar", icon: "file-text" },
+];
+
 const openOfficialUrl = (url: string) => {
   if (!isSafeHttpUrl(url)) return;
   Linking.openURL(url).catch((error) => {
@@ -50,11 +58,16 @@ const openOfficialUrl = (url: string) => {
   });
 };
 
-const PROMPT_KEYS: { id: string; key: PromptKey }[] = [
-  { id: "pan", key: "askPromptPan" },
-  { id: "scholarship", key: "askPromptScholarship" },
-  { id: "aadhaar", key: "askPromptAadhaar" },
-];
+function formatTime(iso: string) {
+  try {
+    return new Date(iso).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return "";
+  }
+}
 
 function Bubble({
   m,
@@ -77,115 +90,145 @@ function Bubble({
 
   return (
     <View style={[s.message, isUser && s.user]}>
-      <View
-        style={[
-          s.avatar,
-          { backgroundColor: isUser ? c.primary : c.primarySoft },
-        ]}
-      >
-        {isUser ? (
-          <Feather name="user" size={18} color={c.foreground} />
-        ) : (
+      {!isUser ? (
+        <View style={[s.avatar, { backgroundColor: c.primarySoft }]}>
           <Image
             source={require("../../assets/images/images-2/Saarthi-AI Images.jpeg")}
-            style={{ width: 24, height: 24 }}
-            resizeMode="contain"
+            style={s.avatarImage}
+            resizeMode="cover"
           />
-        )}
-      </View>
+        </View>
+      ) : null}
 
-      <View
-        style={[
-          s.bubble,
-          {
-            backgroundColor: isUser ? c.primary : c.card,
-            borderColor: m.isError
-              ? c.destructive
-              : isUser
-                ? c.primary
-                : c.border,
-          },
-        ]}
-      >
-        <Text
-          selectable
+      <View style={s.bubbleCol}>
+        <View
           style={[
-            s.messageText,
-            { color: isUser ? c.primaryForeground : c.foreground },
+            s.bubble,
+            isUser ? s.userBubble : s.assistantBubble,
+            {
+              backgroundColor: isUser ? c.primary : c.card,
+              borderColor: m.isError
+                ? c.destructive
+                : isUser
+                  ? "transparent"
+                  : c.border,
+            },
           ]}
         >
-          {isUser
-            ? m.content
-            : splitContentLinks(m.content).map((segment, index) =>
-                segment.kind === "link" ? (
-                  <Text
-                    key={index}
-                    accessibilityRole="link"
-                    onPress={() => openOfficialUrl(segment.url)}
-                    style={[s.inlineLink, { color: c.primary }]}
-                  >
-                    {segment.text}
-                  </Text>
-                ) : segment.kind === "unverified-link" ? (
-                  <Text key={index} style={{ color: c.mutedForeground }}>
-                    {t("askUnverifiedLinkRemoved")}
-                  </Text>
-                ) : (
-                  segment.text
-                ),
-              )}
-        </Text>
+          {!isUser ? (
+            <Text style={[s.roleLabel, { color: c.primary }]}>Saarthi</Text>
+          ) : null}
 
-        {sources.length ? (
-          <>
-            <Text style={[s.sources, { color: c.mutedForeground }]}>
-              {t("officialSources")}
-            </Text>
-            {sources.map((source, index) => {
-              const typeLabel = t(SOURCE_TYPE_KEYS[source.type ?? "website"]);
-              return (
-                <MotionPressable
-                  key={`${source.url}-${index}`}
-                  accessibilityRole="link"
-                  accessibilityLabel={`${source.label}, ${typeLabel}`}
-                  onPress={() => openOfficialUrl(source.url)}
-                  style={[s.source, { backgroundColor: c.primarySoft }]}
-                >
-                  <Feather name="external-link" size={13} color={c.primary} />
-                  <Text
-                    numberOfLines={1}
-                    style={[s.sourceText, { color: c.primary }]}
-                  >
-                    {source.label}
-                  </Text>
-                  <Text
-                    numberOfLines={1}
-                    style={[s.sourceType, { color: c.mutedForeground }]}
-                  >
-                    {typeLabel}
-                  </Text>
-                </MotionPressable>
-              );
-            })}
-          </>
-        ) : null}
-
-        {onRetry ? (
-          <MotionPressable
-            accessibilityRole="button"
-            accessibilityLabel="Retry"
-            disabled={retryDisabled}
-            onPress={onRetry}
+          <Text
+            selectable
             style={[
-              s.retry,
-              {
-                backgroundColor: c.primarySoft,
-                opacity: retryDisabled ? 0.35 : 1,
-              },
+              s.messageText,
+              { color: isUser ? c.primaryForeground : c.foreground },
             ]}
           >
-            <Feather name="rotate-ccw" size={15} color={c.primary} />
-          </MotionPressable>
+            {isUser
+              ? m.content
+              : splitContentLinks(m.content).map((segment, index) =>
+                  segment.kind === "link" ? (
+                    <Text
+                      key={index}
+                      accessibilityRole="link"
+                      onPress={() => openOfficialUrl(segment.url)}
+                      style={[s.inlineLink, { color: c.primary }]}
+                    >
+                      {segment.text}
+                    </Text>
+                  ) : segment.kind === "unverified-link" ? (
+                    <Text key={index} style={{ color: c.mutedForeground }}>
+                      {t("askUnverifiedLinkRemoved")}
+                    </Text>
+                  ) : (
+                    segment.text
+                  ),
+                )}
+          </Text>
+
+          {sources.length ? (
+            <View style={s.sourcesBlock}>
+              <Text style={[s.sources, { color: c.mutedForeground }]}>
+                {t("officialSources")}
+              </Text>
+              {sources.map((source, index) => {
+                const typeLabel = t(SOURCE_TYPE_KEYS[source.type ?? "website"]);
+                return (
+                  <MotionPressable
+                    key={`${source.url}-${index}`}
+                    accessibilityRole="link"
+                    accessibilityLabel={`${source.label}, ${typeLabel}`}
+                    onPress={() => openOfficialUrl(source.url)}
+                    style={[
+                      s.source,
+                      {
+                        backgroundColor: c.primarySoft,
+                        borderColor: c.border,
+                      },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        s.sourceIcon,
+                        { backgroundColor: c.card },
+                      ]}
+                    >
+                      <Feather name="external-link" size={12} color={c.primary} />
+                    </View>
+                    <View style={s.sourceCopy}>
+                      <Text
+                        numberOfLines={1}
+                        style={[s.sourceText, { color: c.foreground }]}
+                      >
+                        {source.label}
+                      </Text>
+                      <Text
+                        numberOfLines={1}
+                        style={[s.sourceType, { color: c.mutedForeground }]}
+                      >
+                        {typeLabel}
+                      </Text>
+                    </View>
+                    <Feather name="chevron-right" size={14} color={c.mutedForeground} />
+                  </MotionPressable>
+                );
+              })}
+            </View>
+          ) : null}
+
+          {onRetry ? (
+            <MotionPressable
+              accessibilityRole="button"
+              accessibilityLabel="Retry"
+              disabled={retryDisabled}
+              onPress={onRetry}
+              style={[
+                s.retry,
+                {
+                  backgroundColor: c.primarySoft,
+                  borderColor: c.border,
+                  opacity: retryDisabled ? 0.35 : 1,
+                },
+              ]}
+            >
+              <Feather name="rotate-ccw" size={14} color={c.primary} />
+              <Text style={[s.retryText, { color: c.primary }]}>Retry</Text>
+            </MotionPressable>
+          ) : null}
+        </View>
+
+        {m.createdAt ? (
+          <Text
+            style={[
+              s.time,
+              isUser ? s.timeUser : s.timeAssistant,
+              { color: c.mutedForeground },
+            ]}
+          >
+            {formatTime(m.createdAt)}
+          </Text>
         ) : null}
       </View>
     </View>
@@ -210,8 +253,8 @@ export default function Ask() {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const sendingRef = useRef(false);
-
-  const [isListening,setIsListening]=useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [inputFocused, setInputFocused] = useState(false);
 
   const session = useMemo(
     () => chats.find((chat) => chat.id === sid),
@@ -219,6 +262,8 @@ export default function Ask() {
   );
 
   const input = useRef<TextInput>(null);
+  const hasMessages = Boolean(session?.messages.length) || sending;
+
   useSpeechEvent("start", () => {
     setIsListening(true);
   });
@@ -229,7 +274,6 @@ export default function Ask() {
 
   useSpeechEvent("result", (event) => {
     const transcript = event.results[0]?.transcript;
-
     if (transcript) {
       setText(transcript);
     }
@@ -239,7 +283,6 @@ export default function Ask() {
     setIsListening(false);
   });
 
-  // Follow chats opened from the Profile tab while this screen stays mounted.
   useEffect(() => {
     if (activeChatId) setSid(activeChatId);
   }, [activeChatId]);
@@ -249,8 +292,6 @@ export default function Ask() {
       setSid(startNewChat());
     }
   }, [sid, startNewChat]);
-
-
 
   const send = async (questionText = text, retryMessageId?: string) => {
     const question = questionText.trim();
@@ -338,63 +379,95 @@ export default function Ask() {
     }
   };
 
+  const canSend = Boolean(text.trim()) && !sending;
+
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: c.background }}
       behavior="padding"
     >
-      <FadeInView style={{ flex: 1, paddingTop: insets.top }}>
-        <View style={s.header}>
-          <View style={s.headerText}>
-            <Text style={[s.eyebrow, { color: c.primary }]}>
-              {t("heroEyebrow")}
-            </Text>
-            <Text style={[s.headerTitle, { color: c.foreground }]}>
-              {t("ask")}
-            </Text>
-          </View>
-
-          <View style={s.headerActions}>
-            <IconButton
-              icon="trash-2"
-              label={t("clearChat")}
-              onPress={() => sid && clearChat(sid)}
-            />
-            <IconButton
-              icon="plus"
-              label={t("profileNewConversation")}
-              onPress={newChat}
-            />
-          </View>
-        </View>
-
-        {!session?.messages.length && !sending ? (
-          <View style={s.emptyChat}>
-            <View style={[s.bigIcon, { backgroundColor: c.primarySoft }]}>
-              <Image
-                source={require("../../assets/images/images-2/Saarthi-AI Images.jpeg")}
-                style={{ width: 38, height: 38, borderRadius: 12 }}
-                resizeMode="contain"
-              />
+      <FadeInView style={{ flex: 1 }}>
+        <LinearGradient
+          colors={[c.indigo, c.primary, c.background]}
+          locations={[0, 0.35, 1]}
+          style={[s.topPlane, { paddingTop: insets.top + 8 }]}
+        >
+          <View style={s.header}>
+            <View style={s.brandBlock}>
+              <View style={s.brandMarkWrap}>
+                <Image
+                  source={require("../../assets/images/images-2/Saarthi-AI Images.jpeg")}
+                  style={s.brandMark}
+                  resizeMode="cover"
+                />
+              </View>
+              <View style={s.headerText}>
+                <Text style={s.eyebrow}>{t("askEyebrow")}</Text>
+                <Text style={s.headerTitle}>{t("ask")}</Text>
+              </View>
             </View>
 
-            <Text style={[s.emptyTitle, { color: c.foreground }]}>
-              {t("askEmptyTitle")}
-            </Text>
+            <View style={s.headerActions}>
+              <MotionPressable
+                accessibilityRole="button"
+                accessibilityLabel={t("clearChat")}
+                onPress={() => sid && clearChat(sid)}
+                style={s.headerChip}
+              >
+                <Feather name="trash-2" size={15} color="#fff" />
+              </MotionPressable>
+              <MotionPressable
+                accessibilityRole="button"
+                accessibilityLabel={t("newChat")}
+                onPress={newChat}
+                style={s.headerChip}
+              >
+                <Feather name="plus" size={16} color="#fff" />
+              </MotionPressable>
+            </View>
+          </View>
+        </LinearGradient>
 
-            <Text style={[s.emptyBody, { color: c.mutedForeground }]}>
-              {t("askEmptyDescription")}
+        {!hasMessages ? (
+          <View style={s.emptyChat}>
+            <View style={[s.heroCard, { backgroundColor: c.card, borderColor: c.border }]}>
+              <View style={[s.bigIcon, { backgroundColor: c.primarySoft }]}>
+                <Image
+                  source={require("../../assets/images/images-2/Saarthi-AI Images.jpeg")}
+                  style={s.bigIconImage}
+                  resizeMode="cover"
+                />
+              </View>
+              <Text style={[s.emptyTitle, { color: c.foreground }]}>
+                {t("askEmptyTitle")}
+              </Text>
+              <Text style={[s.emptyBody, { color: c.mutedForeground }]}>
+                {t("askEmptyDescription")}
+              </Text>
+            </View>
+
+            <Text style={[s.suggestLabel, { color: c.mutedForeground }]}>
+              {t("trustedStartingPoints")}
             </Text>
 
             {PROMPT_KEYS.map((prompt) => (
               <MotionPressable
                 key={prompt.id}
-                onPress={() => setText(t(prompt.key))}
+                accessibilityRole="button"
+                accessibilityLabel={t(prompt.key)}
+                onPress={() => {
+                  const value = t(prompt.key);
+                  setText(value);
+                  void send(value);
+                }}
                 style={[
                   s.prompt,
                   { backgroundColor: c.card, borderColor: c.border },
                 ]}
               >
+                <View style={[s.promptIcon, { backgroundColor: c.primarySoft }]}>
+                  <Feather name={prompt.icon} size={16} color={c.primary} />
+                </View>
                 <Text style={[s.promptText, { color: c.foreground }]}>
                   {t(prompt.key)}
                 </Text>
@@ -419,11 +492,25 @@ export default function Ask() {
             keyboardShouldPersistTaps="handled"
             ListHeaderComponent={
               sending ? (
-                <View style={s.typing}>
-                  <TypingIndicator color={c.primary} label={t("askChecking")} />
-                  <Text style={[s.typingText, { color: c.mutedForeground }]}>
-                    {t("askChecking")}
-                  </Text>
+                <View style={s.typingRow}>
+                  <View style={[s.avatar, { backgroundColor: c.primarySoft }]}>
+                    <Image
+                      source={require("../../assets/images/images-2/Saarthi-AI Images.jpeg")}
+                      style={s.avatarImage}
+                      resizeMode="cover"
+                    />
+                  </View>
+                  <View
+                    style={[
+                      s.typingCard,
+                      { backgroundColor: c.card, borderColor: c.border },
+                    ]}
+                  >
+                    <TypingIndicator color={c.primary} label={t("askChecking")} />
+                    <Text style={[s.typingText, { color: c.mutedForeground }]}>
+                      {t("askChecking")}
+                    </Text>
+                  </View>
                 </View>
               ) : null
             }
@@ -434,15 +521,28 @@ export default function Ask() {
           style={[
             s.inputArea,
             {
+              backgroundColor: c.background,
               borderTopColor: c.border,
               paddingBottom: Math.max(insets.bottom, 10),
             },
           ]}
         >
+          {isListening ? (
+            <View style={[s.listeningBanner, { backgroundColor: c.primarySoft }]}>
+              <View style={[s.listeningDot, { backgroundColor: c.primary }]} />
+              <Text style={[s.listeningText, { color: c.primary }]}>
+                Listening… speak your question
+              </Text>
+            </View>
+          ) : null}
+
           <View
             style={[
               s.inputBox,
-              { backgroundColor: c.card, borderColor: c.input },
+              {
+                backgroundColor: c.card,
+                borderColor: inputFocused || isListening ? c.primary : c.input,
+              },
             ]}
           >
             <TextInput
@@ -455,45 +555,49 @@ export default function Ask() {
               placeholderTextColor={c.mutedForeground}
               returnKeyType="send"
               onSubmitEditing={() => void send()}
+              onFocus={() => setInputFocused(true)}
+              onBlur={() => setInputFocused(false)}
               accessibilityLabel={t("askPlaceholder")}
               style={[s.chatInput, { color: c.foreground }]}
             />
 
             <MotionPressable
-  testID="voice-input"
-  accessibilityRole="button"
-  accessibilityLabel={isListening ? "Stop voice input" : "Start voice input"}
-  onPress={() => void toggleListening()}
-  style={[
-    s.voiceButton,
-    {
-      backgroundColor: isListening ? c.primarySoft : c.background,
-      borderColor: c.border,
-    },
-  ]}
->
-  <Feather
-    name={isListening ? "mic-off" : "mic"}
-    size={18}
-    color={c.primary}
-  />
-</MotionPressable>
+              testID="voice-input"
+              accessibilityRole="button"
+              accessibilityLabel={
+                isListening ? "Stop voice input" : "Start voice input"
+              }
+              onPress={() => void toggleListening()}
+              style={[
+                s.voiceButton,
+                {
+                  backgroundColor: isListening ? c.primary : c.muted,
+                  borderColor: isListening ? c.primary : c.border,
+                },
+              ]}
+            >
+              <Feather
+                name={isListening ? "mic-off" : "mic"}
+                size={17}
+                color={isListening ? c.primaryForeground : c.primary}
+              />
+            </MotionPressable>
 
             <MotionPressable
               testID="send-message"
               accessibilityRole="button"
               accessibilityLabel={t("askSend")}
-              disabled={!text.trim() || sending}
+              disabled={!canSend}
               onPress={() => void send()}
               style={[
                 s.send,
                 {
                   backgroundColor: c.primary,
-                  opacity: !text.trim() || sending ? 0.35 : 1,
+                  opacity: canSend ? 1 : 0.35,
                 },
               ]}
             >
-              <Feather name="arrow-up" size={19} color={c.primaryForeground} />
+              <Feather name="arrow-up" size={18} color={c.primaryForeground} />
             </MotionPressable>
           </View>
 
@@ -507,13 +611,32 @@ export default function Ask() {
 }
 
 const s = StyleSheet.create({
+  topPlane: {
+    paddingHorizontal: 18,
+    paddingBottom: 18,
+  },
   header: {
-    paddingHorizontal: 20,
-    paddingTop: 15,
-    paddingBottom: 15,
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    justifyContent: "space-between",
+  },
+  brandBlock: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    flex: 1,
+  },
+  brandMarkWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    overflow: "hidden",
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.35)",
+  },
+  brandMark: {
+    width: "100%",
+    height: "100%",
   },
   headerText: {
     flex: 1,
@@ -522,200 +645,310 @@ const s = StyleSheet.create({
     fontFamily: "Inter_700Bold",
     fontSize: 10,
     letterSpacing: 1.2,
+    color: "rgba(255,255,255,0.72)",
+    textTransform: "uppercase",
   },
   headerTitle: {
+    marginTop: 2,
     fontFamily: "Inter_700Bold",
-    fontSize: 26,
-    letterSpacing: -0.4,
-    marginTop: 5,
+    fontSize: 22,
+    letterSpacing: -0.3,
+    color: "#fff",
   },
   headerActions: {
     flexDirection: "row",
     gap: 8,
   },
+  headerChip: {
+    width: 38,
+    height: 38,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.16)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.22)",
+  },
   emptyChat: {
     flex: 1,
+    paddingHorizontal: 18,
+    paddingTop: 8,
+  },
+  heroCard: {
+    borderWidth: 1,
+    borderRadius: 22,
+    padding: 20,
     alignItems: "center",
-    paddingHorizontal: 22,
-    paddingTop: 30,
+    marginBottom: 18,
   },
   bigIcon: {
-    width: 65,
-    height: 65,
+    width: 68,
+    height: 68,
     borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
+  },
+  bigIconImage: {
+    width: 68,
+    height: 68,
   },
   emptyTitle: {
     fontFamily: "Inter_700Bold",
-    fontSize: 21,
+    fontSize: 20,
     textAlign: "center",
-    marginTop: 18,
+    marginTop: 16,
+    letterSpacing: -0.2,
   },
   emptyBody: {
     fontFamily: "Inter_400Regular",
-    fontSize: 14,
-    lineHeight: 21,
+    fontSize: 13,
+    lineHeight: 20,
     textAlign: "center",
     marginTop: 8,
-    marginBottom: 26,
+  },
+  suggestLabel: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 10,
+    letterSpacing: 1.1,
+    textTransform: "uppercase",
+    marginBottom: 10,
   },
   prompt: {
     width: "100%",
-    minHeight: 54,
+    minHeight: 58,
     borderWidth: 1,
-    borderRadius: 15,
-    paddingHorizontal: 14,
+    borderRadius: 16,
+    paddingHorizontal: 12,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    gap: 11,
     marginBottom: 9,
+  },
+  promptIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
   },
   promptText: {
     fontFamily: "Inter_500Medium",
     fontSize: 13,
     flex: 1,
-    paddingRight: 12,
+    lineHeight: 18,
   },
   list: {
-    paddingHorizontal: 17,
-    paddingTop: 12,
-    paddingBottom: 18,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 14,
   },
   message: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "flex-end",
     gap: 8,
-    marginBottom: 11,
+    marginBottom: 14,
   },
   user: {
     flexDirection: "row-reverse",
   },
   avatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 10,
+    width: 30,
+    height: 30,
+    borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 2,
+    overflow: "hidden",
+  },
+  avatarImage: {
+    width: 30,
+    height: 30,
+  },
+  bubbleCol: {
+    maxWidth: "82%",
   },
   bubble: {
-    maxWidth: "82%",
     borderRadius: 20,
-    paddingHorizontal: 15,
-    paddingVertical: 13,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     borderWidth: 1,
-    shadowColor: "#172b4d",
-    shadowOpacity: 0.045,
-    shadowRadius: 7,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
+  },
+  userBubble: {
+    borderBottomRightRadius: 6,
+  },
+  assistantBubble: {
+    borderBottomLeftRadius: 6,
+  },
+  roleLabel: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 10,
+    letterSpacing: 0.6,
+    marginBottom: 4,
+    textTransform: "uppercase",
   },
   messageText: {
     fontFamily: "Inter_400Regular",
     fontSize: 14,
     lineHeight: 21,
   },
+  time: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 10,
+    marginTop: 4,
+  },
+  timeUser: {
+    textAlign: "right",
+    marginRight: 4,
+  },
+  timeAssistant: {
+    marginLeft: 4,
+  },
   retry: {
     alignSelf: "flex-start",
-    width: 32,
-    height: 32,
-    borderRadius: 12,
     marginTop: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 12,
+    borderWidth: 1,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    gap: 6,
+  },
+  retryText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 12,
+  },
+  sourcesBlock: {
+    marginTop: 10,
   },
   sources: {
     fontFamily: "Inter_700Bold",
     fontSize: 9,
     letterSpacing: 1,
-    marginTop: 10,
+    marginBottom: 4,
   },
   source: {
     flexDirection: "row",
-    gap: 6,
+    gap: 8,
     alignItems: "center",
-    borderRadius: 9,
-    paddingVertical: 7,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingVertical: 8,
     paddingHorizontal: 8,
     marginTop: 6,
   },
+  sourceIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sourceCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
   sourceText: {
     fontFamily: "Inter_600SemiBold",
-    fontSize: 11,
-    flexShrink: 1,
+    fontSize: 12,
   },
   sourceType: {
     fontFamily: "Inter_400Regular",
     fontSize: 10,
-    marginLeft: "auto",
-    paddingLeft: 6,
+    marginTop: 1,
   },
   inlineLink: {
     fontFamily: "Inter_600SemiBold",
     textDecorationLine: "underline",
   },
-  typing: {
+  typingRow: {
     flexDirection: "row",
-    gap: 10,
+    alignItems: "flex-end",
+    gap: 8,
+    paddingVertical: 6,
+  },
+  typingCard: {
+    flexDirection: "row",
     alignItems: "center",
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 18,
+    borderBottomLeftRadius: 6,
+    paddingHorizontal: 14,
     paddingVertical: 12,
-    paddingHorizontal: 47,
   },
   typingText: {
     fontFamily: "Inter_400Regular",
     fontSize: 12,
   },
   inputArea: {
-    paddingTop: 11,
-    paddingHorizontal: 16,
-    borderTopWidth: 1,
+    paddingTop: 10,
+    paddingHorizontal: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  listeningBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    alignSelf: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    marginBottom: 8,
+  },
+  listeningDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 999,
+  },
+  listeningText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 12,
   },
   inputBox: {
-    minHeight: 60,
+    minHeight: 58,
     maxHeight: 130,
-    borderRadius: 20,
-    borderWidth: 1,
-    paddingLeft: 15,
+    borderRadius: 22,
+    borderWidth: 1.5,
+    paddingLeft: 14,
     paddingRight: 7,
     flexDirection: "row",
     alignItems: "flex-end",
   },
   chatInput: {
     flex: 1,
-    minHeight: 48,
+    minHeight: 46,
     maxHeight: 112,
     paddingTop: 13,
-    paddingBottom: 11,
+    paddingBottom: 12,
     fontFamily: "Inter_400Regular",
     fontSize: 14,
   },
+  voiceButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 13,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
+    marginRight: 6,
+  },
   send: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
+    width: 38,
+    height: 38,
+    borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 8,
   },
   disclaimer: {
-    fontSize: 11,
-    lineHeight: 16,
+    fontFamily: "Inter_400Regular",
+    fontSize: 10,
+    lineHeight: 15,
     textAlign: "center",
-    marginHorizontal: 20,
-    marginTop: 10,
-    marginBottom: 12,
+    marginHorizontal: 8,
+    marginTop: 8,
+    marginBottom: 6,
   },
-
-  voiceButton: {
-  width: 40,
-  height: 40,
-  borderRadius: 14,
-  borderWidth: 1,
-  alignItems: "center",
-  justifyContent: "center",
-  marginBottom: 8,
-  marginRight: 6,
-},
 });

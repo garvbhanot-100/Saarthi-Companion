@@ -1,56 +1,91 @@
 import { Feather } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import { router } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
 import React, { useEffect, useRef, useState } from "react";
 import {
+  AccessibilityInfo,
   ActivityIndicator,
   Alert,
-  Platform,
+  Animated,
+  Image,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
-import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { GoogleClerkButton } from "@/components/GoogleClerkButton";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
-import {
-  AppInput,
-  GhostButton,
-  LogoMark,
-  PrimaryButton,
-} from "@/components/UI";
-import { useSaarthi } from "@/context/SaarthiContext";
+import { MotionPressable } from "@/components/Motion";
+import { AppInput } from "@/components/UI";
+import { isClerkConfigured } from "@/constants/clerk";
 import { useLanguage } from "@/context/LanguagesContext";
+import { useSaarthi } from "@/context/SaarthiContext";
 import { useColors } from "@/hooks/useColors";
 
-const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim();
+// Required so the browser auth session can return to the Expo app.
+WebBrowser.maybeCompleteAuthSession();
 
-type GoogleSignInModule = typeof import("react-native-nitro-google-signin");
-
-// Google sign-in is a native (Nitro) module. It is missing in Expo Go, where
-// importing it throws, so load it lazily and hide the button when unavailable.
-let googleSignIn: GoogleSignInModule | null = null;
-if (Platform.OS === "android" && GOOGLE_WEB_CLIENT_ID) {
-  try {
-    googleSignIn = require("react-native-nitro-google-signin") as GoogleSignInModule;
-  } catch {
-    console.warn("Google sign-in is unavailable in this build (for example Expo Go).");
-  }
-}
-
-// Return to the screen that opened the auth modal (the Profile tab).
-const closeAuth = () => {
-  if (router.canGoBack()) {
-    router.back();
-  } else {
-    router.replace("/(tabs)/profile");
-  }
+const enterApp = () => {
+  router.replace("/(tabs)");
 };
+
+function RiseIn({
+  children,
+  delay = 0,
+  style,
+}: React.PropsWithChildren<{ delay?: number; style?: object }>) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(12)).current;
+
+  useEffect(() => {
+    let cancelled = false;
+    AccessibilityInfo.isReduceMotionEnabled().then((reduce) => {
+      if (cancelled) return;
+      if (reduce) {
+        opacity.setValue(1);
+        translateY.setValue(0);
+        return;
+      }
+      Animated.parallel([
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 380,
+          delay,
+          useNativeDriver: true,
+        }),
+        Animated.timing(translateY, {
+          toValue: 0,
+          duration: 380,
+          delay,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [delay, opacity, translateY]);
+
+  return (
+    <Animated.View style={[{ opacity, transform: [{ translateY }] }, style]}>
+      {children}
+    </Animated.View>
+  );
+}
 
 export default function Auth() {
   const c = useColors();
   const i = useSafeAreaInsets();
   const { t, hydrated: languageHydrated } = useLanguage();
-  const { hydrated: profileHydrated, signUp, logIn } = useSaarthi();
+  const {
+    hydrated: profileHydrated,
+    user,
+    signUp,
+    logIn,
+  } = useSaarthi();
   const [mode, setMode] = useState<"login" | "signup">("signup");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -59,21 +94,19 @@ export default function Auth() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const authInProgress = useRef(false);
-  const [googleReady, setGoogleReady] = useState(false);
 
   useEffect(() => {
-    if (!googleSignIn || !GOOGLE_WEB_CLIENT_ID) return;
-    try {
-      googleSignIn.GoogleOneTapSignIn.configure({
-        webClientId: GOOGLE_WEB_CLIENT_ID,
-        autoSelectOnSignIn: false,
-        offlineAccess: false,
-      });
-      setGoogleReady(true);
-    } catch (error) {
-      console.error("Could not configure Google sign-in:", error);
-    }
+    void WebBrowser.warmUpAsync();
+    return () => {
+      void WebBrowser.coolDownAsync();
+    };
   }, []);
+
+  useEffect(() => {
+    if (profileHydrated && user) {
+      enterApp();
+    }
+  }, [profileHydrated, user]);
 
   const submit = async () => {
     if (authInProgress.current) return;
@@ -114,12 +147,12 @@ export default function Auth() {
           return;
         }
       }
-      closeAuth();
-    } catch (error) {
-      console.error("Could not save the local profile:", error);
+      enterApp();
+    } catch (submitError) {
+      console.error("Could not save the local profile:", submitError);
       setError(
-        error instanceof Error
-          ? error.message
+        submitError instanceof Error
+          ? submitError.message
           : t("profileAuthGoogleLoginFailed"),
       );
     } finally {
@@ -128,303 +161,376 @@ export default function Auth() {
     }
   };
 
-  const continueWithGoogle = async () => {
-    if (authInProgress.current) return;
-    if (!googleSignIn || !googleReady) {
-      setError(t("profileAuthGoogleLoginFailed"));
-      return;
-    }
-    const {
-      GoogleOneTapSignIn,
-      isCancelledResponse,
-      isErrorWithCode,
-      isNoSavedCredentialFoundResponse,
-      isSuccessResponse,
-      statusCodes,
-    } = googleSignIn;
-
-    const authMode = mode;
-    authInProgress.current = true;
-    setError("");
-    setBusy(true);
-    try {
-      await GoogleOneTapSignIn.checkPlayServices();
-      let result = await GoogleOneTapSignIn.signIn();
-      if (isNoSavedCredentialFoundResponse(result)) {
-        result = await GoogleOneTapSignIn.createAccount();
-      }
-      if (isNoSavedCredentialFoundResponse(result)) {
-        result = await GoogleOneTapSignIn.presentExplicitSignIn();
-      }
-      if (isCancelledResponse(result)) return;
-      if (!isSuccessResponse(result)) {
-        throw new Error("Google did not return an authenticated account");
-      }
-
-      const { user, idToken } = result.data;
-      if (!idToken) throw new Error("Google did not return an ID token");
-      if (!user.email?.trim()) {
-        setError(t("profileAuthGoogleEmailMissing"));
-        return;
-      }
-      const profile = {
-        name: user.name?.trim() || t("profileAuthDefaultName"),
-        email: user.email.trim().toLowerCase(),
-      };
-      if (authMode === "login") {
-        await logIn(profile.email, undefined, profile);
-      } else {
-        await signUp(profile);
-      }
-      closeAuth();
-    } catch (error) {
-      if (isErrorWithCode(error) && error.code === statusCodes.SIGN_IN_CANCELLED) {
-        return;
-      }
-      console.error("Google sign-in failed:", error);
-      setError(t("profileAuthGoogleLoginFailed"));
-    } finally {
-      authInProgress.current = false;
-      setBusy(false);
-    }
-  };
-
   if (!languageHydrated || !profileHydrated) {
     return (
-      <View
-        style={{
-          flex: 1,
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: c.background,
-        }}
-      >
+      <View style={[s.loading, { backgroundColor: c.background }]}>
         <ActivityIndicator color={c.primary} />
       </View>
     );
   }
 
   return (
-    <KeyboardAwareScrollViewCompat
-      style={{ flex: 1, backgroundColor: c.background }}
-      contentContainerStyle={{
-        paddingTop: i.top + 17,
-        paddingBottom: i.bottom + 30,
-        paddingHorizontal: 22,
-      }}
-      bottomOffset={20}
-      keyboardShouldPersistTaps="handled"
-    >
-      <View style={s.top}>
-        <LogoMark />
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t("profileAuthClose")}
-          onPress={closeAuth}
-        >
-          <Feather name="x" size={22} color={c.mutedForeground} />
-        </Pressable>
-      </View>
-      <View style={s.intro}>
-        <Text style={[s.eyebrow, { color: c.primary }]}>
-          {mode === "signup"
-            ? t("profileAuthWelcome")
-            : t("profileAuthWelcomeBack")}
-        </Text>
-        <Text style={[s.title, { color: c.foreground }]}>
-          {mode === "signup"
-            ? t("profileAuthSignupTitle")
-            : t("profileAuthLoginTitle")}
-        </Text>
-        <Text style={[s.caption, { color: c.mutedForeground }]}>
-          {mode === "signup"
-            ? t("profileAuthSignupDescription")
-            : t("profileAuthLoginDescription")}
-        </Text>
-      </View>
-      <View style={[s.switcher, { backgroundColor: c.muted }]}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t("profileAuthLogin")}
-          onPress={() => {
-            setMode("login");
-            setError("");
-          }}
-          style={[
-            s.switchItem,
-            mode === "login" && { backgroundColor: c.card },
-          ]}
-        >
-          <Text
-            style={[
-              s.switchText,
-              { color: mode === "login" ? c.foreground : c.mutedForeground },
-            ]}
-          >
-            {t("profileAuthLogin")}
-          </Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t("profileAuthCreateAccount")}
-          onPress={() => {
-            setMode("signup");
-            setError("");
-          }}
-          style={[
-            s.switchItem,
-            mode === "signup" && { backgroundColor: c.card },
-          ]}
-        >
-          <Text
-            style={[
-              s.switchText,
-              { color: mode === "signup" ? c.foreground : c.mutedForeground },
-            ]}
-          >
-            {t("profileAuthCreateAccount")}
-          </Text>
-        </Pressable>
-      </View>
-      {mode === "signup" && (
-        <AppInput
-          label={t("profileAuthFullName")}
-          accessibilityLabel={t("profileAuthFullName")}
-          value={name}
-          onChangeText={setName}
-          placeholder={t("profileAuthYourName")}
-        />
-      )}
-      <AppInput
-        label={t("profileAuthEmail")}
-        accessibilityLabel={t("profileAuthEmail")}
-        value={email}
-        onChangeText={setEmail}
-        placeholder={t("profileAuthEmailPlaceholder")}
-        keyboardType="email-address"
-        autoCapitalize="none"
-      />
-      <AppInput
-        label={t("profileAuthPassword")}
-        accessibilityLabel={t("profileAuthPassword")}
-        value={password}
-        onChangeText={setPassword}
-        placeholder={t("profileAuthPasswordPlaceholder")}
-        secureTextEntry
-      />
-      {mode === "signup" && (
-        <AppInput
-          label={t("profileAuthConfirmPassword")}
-          accessibilityLabel={t("profileAuthConfirmPassword")}
-          value={confirm}
-          onChangeText={setConfirm}
-          placeholder={t("profileAuthReenterPassword")}
-          secureTextEntry
-        />
-      )}
-      {error ? (
-        <View style={[s.errorBox, { backgroundColor: c.warningSoft }]}>
-          <Feather name="alert-circle" size={15} color={c.accent} />
-          <Text style={[s.errorText, { color: c.foreground }]}>{error}</Text>
-        </View>
-      ) : null}
-      <PrimaryButton
-        title={
-          busy
-            ? t("profileAuthWaiting")
-            : mode === "signup"
-              ? t("profileAuthCreateLocalProfile")
-              : t("profileAuthLogin")
-        }
-        icon="arrow-right"
-        onPress={submit}
-        disabled={busy}
-      />
-      {googleReady && (
-        <>
-          <View style={s.or}>
-            <View style={[s.line, { backgroundColor: c.border }]} />
-            <Text style={[s.orText, { color: c.mutedForeground }]}>
-              {t("profileAuthOr")}
-            </Text>
-            <View style={[s.line, { backgroundColor: c.border }]} />
-          </View>
-          <GhostButton
-            title={
-              busy ? t("profileAuthWaiting") : t("profileAuthContinueGoogle")
-            }
-            icon="globe"
-            onPress={() => void continueWithGoogle()}
-          />
-        </>
-      )}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={
-          mode === "login"
-            ? t("profileAuthForgotPassword")
-            : t("profileAuthSecureAuthentication")
-        }
-        onPress={() =>
-          Alert.alert(
-            t("profileAuthPasswordResetTitle"),
-            t("profileAuthPasswordResetDescription"),
-          )
-        }
+    <View style={[s.root, { backgroundColor: c.background }]}>
+      <KeyboardAwareScrollViewCompat
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: i.bottom + 28 }}
+        bottomOffset={20}
+        keyboardShouldPersistTaps="handled"
       >
-        <Text style={[s.forgot, { color: c.primary }]}>
-          {mode === "login"
-            ? t("profileAuthForgotPassword")
-            : t("profileAuthSecureAuthentication")}
+        <LinearGradient
+          colors={[c.indigo, c.primary, c.background]}
+          locations={[0, 0.55, 1]}
+          style={[s.hero, { paddingTop: i.top + 10 }]}
+        >
+          <View style={s.heroGlow} />
+
+          <RiseIn>
+            <View style={s.topBar}>
+              <View style={s.brandRow}>
+                <Image
+                  source={require("../assets/images/images-2/Saarthi-AI Images.jpeg")}
+                  style={s.brandMark}
+                  resizeMode="cover"
+                />
+                <Text style={s.brandWord}>
+                  Saarthi <Text style={s.brandAccent}>AI</Text>
+                </Text>
+              </View>
+
+            </View>
+          </RiseIn>
+
+          <RiseIn delay={80}>
+            <Text style={s.eyebrow}>
+              {mode === "signup"
+                ? t("profileAuthWelcome")
+                : t("profileAuthWelcomeBack")}
+            </Text>
+            <Text style={s.heroTitle}>
+              {mode === "signup"
+                ? t("profileAuthSignupTitle")
+                : t("profileAuthLoginTitle")}
+            </Text>
+            <Text style={s.heroCaption}>
+              {mode === "signup"
+                ? t("profileAuthSignupDescription")
+                : t("profileAuthLoginDescription")}
+            </Text>
+          </RiseIn>
+        </LinearGradient>
+
+        <RiseIn delay={140} style={s.sheetWrap}>
+          <View
+            style={[
+              s.sheet,
+              { backgroundColor: c.card, borderColor: c.border },
+            ]}
+          >
+            <View style={[s.switcher, { backgroundColor: c.muted }]}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t("profileAuthLogin")}
+                onPress={() => {
+                  setMode("login");
+                  setError("");
+                }}
+                style={[
+                  s.switchItem,
+                  mode === "login" && {
+                    backgroundColor: c.card,
+                    borderColor: c.border,
+                    borderWidth: 1,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    s.switchText,
+                    {
+                      color:
+                        mode === "login" ? c.foreground : c.mutedForeground,
+                    },
+                  ]}
+                >
+                  {t("profileAuthLogin")}
+                </Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t("profileAuthCreateAccount")}
+                onPress={() => {
+                  setMode("signup");
+                  setError("");
+                }}
+                style={[
+                  s.switchItem,
+                  mode === "signup" && {
+                    backgroundColor: c.card,
+                    borderColor: c.border,
+                    borderWidth: 1,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    s.switchText,
+                    {
+                      color:
+                        mode === "signup" ? c.foreground : c.mutedForeground,
+                    },
+                  ]}
+                >
+                  {t("profileAuthCreateAccount")}
+                </Text>
+              </Pressable>
+            </View>
+
+            {mode === "signup" && (
+              <AppInput
+                label={t("profileAuthFullName")}
+                accessibilityLabel={t("profileAuthFullName")}
+                value={name}
+                onChangeText={setName}
+                placeholder={t("profileAuthYourName")}
+              />
+            )}
+            <AppInput
+              label={t("profileAuthEmail")}
+              accessibilityLabel={t("profileAuthEmail")}
+              value={email}
+              onChangeText={setEmail}
+              placeholder={t("profileAuthEmailPlaceholder")}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+            <AppInput
+              label={t("profileAuthPassword")}
+              accessibilityLabel={t("profileAuthPassword")}
+              value={password}
+              onChangeText={setPassword}
+              placeholder={t("profileAuthPasswordPlaceholder")}
+              secureTextEntry
+            />
+            {mode === "signup" && (
+              <AppInput
+                label={t("profileAuthConfirmPassword")}
+                accessibilityLabel={t("profileAuthConfirmPassword")}
+                value={confirm}
+                onChangeText={setConfirm}
+                placeholder={t("profileAuthReenterPassword")}
+                secureTextEntry
+              />
+            )}
+
+            {error ? (
+              <View style={[s.errorBox, { backgroundColor: c.warningSoft }]}>
+                <Feather name="alert-circle" size={15} color={c.accent} />
+                <Text style={[s.errorText, { color: c.foreground }]}>
+                  {error}
+                </Text>
+              </View>
+            ) : null}
+
+            <MotionPressable
+              accessibilityRole="button"
+              accessibilityLabel={
+                busy
+                  ? t("profileAuthWaiting")
+                  : mode === "signup"
+                    ? t("profileAuthCreateLocalProfile")
+                    : t("profileAuthLogin")
+              }
+              accessibilityState={{ disabled: busy }}
+              disabled={busy}
+              onPress={submit}
+              style={({ pressed }) => [
+                s.primaryCta,
+                {
+                  backgroundColor: c.primary,
+                  opacity: busy ? 0.7 : pressed ? 0.9 : 1,
+                },
+              ]}
+            >
+              <Text style={[s.primaryCtaText, { color: c.primaryForeground }]}>
+                {busy
+                  ? t("profileAuthWaiting")
+                  : mode === "signup"
+                    ? t("profileAuthCreateLocalProfile")
+                    : t("profileAuthLogin")}
+              </Text>
+              {!busy && (
+                <Feather
+                  name="arrow-right"
+                  size={17}
+                  color={c.primaryForeground}
+                />
+              )}
+            </MotionPressable>
+
+            {isClerkConfigured ? (
+              <>
+                <View style={s.or}>
+                  <View style={[s.line, { backgroundColor: c.border }]} />
+                  <Text style={[s.orText, { color: c.mutedForeground }]}>
+                    {t("profileAuthOr")}
+                  </Text>
+                  <View style={[s.line, { backgroundColor: c.border }]} />
+                </View>
+
+                <GoogleClerkButton
+                  mode={mode}
+                  busy={busy}
+                  onBusyChange={setBusy}
+                  onError={setError}
+                  onSuccess={enterApp}
+                />
+              </>
+            ) : null}
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={
+                mode === "login"
+                  ? t("profileAuthForgotPassword")
+                  : t("profileAuthSecureAuthentication")
+              }
+              onPress={() =>
+                Alert.alert(
+                  t("profileAuthPasswordResetTitle"),
+                  t("profileAuthPasswordResetDescription"),
+                )
+              }
+              style={s.footerLink}
+            >
+              <Text style={[s.forgot, { color: c.primary }]}>
+                {mode === "login"
+                  ? t("profileAuthForgotPassword")
+                  : t("profileAuthSecureAuthentication")}
+              </Text>
+            </Pressable>
+          </View>
+        </RiseIn>
+
+        <Text style={[s.disclosure, { color: c.mutedForeground }]}>
+          {t("profileAuthPreviewDisclosure")}
         </Text>
-      </Pressable>
-      <Text style={[s.disclosure, { color: c.mutedForeground }]}>
-        {t("profileAuthPreviewDisclosure")}
-      </Text>
-    </KeyboardAwareScrollViewCompat>
+      </KeyboardAwareScrollViewCompat>
+    </View>
   );
 }
 
 const s = StyleSheet.create({
-  top: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  intro: { marginTop: 35, marginBottom: 24 },
-  eyebrow: { fontFamily: "Inter_700Bold", fontSize: 10, letterSpacing: 1.2 },
-  title: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 30,
-    lineHeight: 36,
-    marginTop: 8,
-  },
-  caption: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 14,
-    lineHeight: 21,
-    marginTop: 10,
-  },
-  switcher: {
-    minHeight: 45,
-    borderRadius: 13,
-    padding: 4,
-    flexDirection: "row",
-    marginBottom: 23,
-  },
-  switchItem: {
+  root: { flex: 1 },
+  loading: {
     flex: 1,
-    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
   },
-  switchText: { fontFamily: "Inter_600SemiBold", fontSize: 12 },
+  hero: {
+    paddingHorizontal: 22,
+    paddingBottom: 42,
+    overflow: "hidden",
+  },
+  heroGlow: {
+    position: "absolute",
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    top: -36,
+    right: -40,
+  },
+  topBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  brandRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  brandMark: {
+    width: 38,
+    height: 38,
+    borderRadius: 13,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.35)",
+  },
+  brandWord: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 20,
+    color: "#fff",
+    letterSpacing: -0.3,
+  },
+  brandAccent: {
+    color: "rgba(255,255,255,0.72)",
+  },
+  closeBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.14)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+  },
+  eyebrow: {
+    marginTop: 28,
+    fontFamily: "Inter_700Bold",
+    fontSize: 10,
+    letterSpacing: 1.2,
+    color: "rgba(255,255,255,0.75)",
+  },
+  heroTitle: {
+    marginTop: 10,
+    fontFamily: "Inter_700Bold",
+    fontSize: 30,
+    lineHeight: 36,
+    letterSpacing: -0.7,
+    color: "#fff",
+  },
+  heroCaption: {
+    marginTop: 10,
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+    lineHeight: 21,
+    color: "rgba(255,255,255,0.8)",
+    maxWidth: 340,
+  },
+  sheetWrap: {
+    marginTop: -22,
+    paddingHorizontal: 18,
+  },
+  sheet: {
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 18,
+  },
+  switcher: {
+    minHeight: 48,
+    borderRadius: 14,
+    padding: 4,
+    flexDirection: "row",
+    marginBottom: 18,
+  },
+  switchItem: {
+    flex: 1,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  switchText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+  },
   errorBox: {
     flexDirection: "row",
     gap: 8,
-    padding: 11,
-    borderRadius: 13,
-    marginBottom: 13,
+    padding: 12,
+    borderRadius: 14,
+    marginBottom: 12,
   },
   errorText: {
     fontFamily: "Inter_500Medium",
@@ -432,25 +538,70 @@ const s = StyleSheet.create({
     lineHeight: 17,
     flex: 1,
   },
+  primaryCta: {
+    minHeight: 54,
+    borderRadius: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+  },
+  primaryCtaText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 15,
+  },
   or: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    marginVertical: 18,
+    marginVertical: 16,
   },
   line: { flex: 1, height: 1 },
-  orText: { fontFamily: "Inter_600SemiBold", fontSize: 10 },
+  orText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+    letterSpacing: 0.6,
+  },
+  googleBtn: {
+    marginTop: 10,
+    width: "100%",
+    minHeight: 52,
+    borderRadius: 16,
+    borderWidth: 1,
+    backgroundColor: "#ffffff",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+    paddingHorizontal: 18,
+    shadowColor: "#12213e",
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  googleBtnText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 15,
+    color: "#1f1f1f",
+    flexShrink: 1,
+  },
+  footerLink: {
+    paddingTop: 14,
+    paddingBottom: 2,
+  },
   forgot: {
     fontFamily: "Inter_700Bold",
     fontSize: 12,
     textAlign: "center",
-    paddingVertical: 16,
   },
   disclosure: {
     fontFamily: "Inter_400Regular",
     fontSize: 10,
     lineHeight: 15,
     textAlign: "center",
-    marginTop: 12,
+    marginTop: 16,
+    marginHorizontal: 28,
   },
 });

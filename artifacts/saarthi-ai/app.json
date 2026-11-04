@@ -1,14 +1,11 @@
 {
   "expo": {
     "name": "Saarthi AI",
-    "slug": "saarthi-ai",
+    "slug": "sarthi-ai",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": [
-      "saarthi-ai",
-      "com.garv.saarthiai"
-    ],
+    "scheme": "com.garv.saarthiai",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -17,10 +14,18 @@
       "backgroundColor": "#f7f8fc"
     },
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": false,
+      "bundleIdentifier": "com.garv.saarthiai",
+      "infoPlist": {
+        "NSSpeechRecognitionUsageDescription": "Allow $(PRODUCT_NAME) to use speech recognition.",
+        "NSMicrophoneUsageDescription": "Allow $(PRODUCT_NAME) to use the microphone."
+      }
     },
     "android": {
-      "package": "com.garv.saarthiai"
+      "package": "com.garv.saarthiai",
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/images/icon.png"
@@ -43,20 +48,25 @@
         }
       ],
       "expo-speech-recognition",
-      "expo-secure-store"
+      "expo-secure-store",
+      "@clerk/expo"
     ],
     "experiments": {
       "typedRoutes": true,
-      "reactCompiler": true
+      "reactCompiler": true,
+      "autolinkingModuleResolution": false
     },
     "extra": {
       "router": {
-        "origin": "https://replit.com/"
+        "origin": "https://replit.com/",
+        "asyncRoutes": {
+          "web": true
+        }
       },
       "eas": {
-        "projectId": "617321b3-ff16-4fc0-ba37-98361caecfa3"
+        "projectId": "f8bd4ead-fac1-4378-9977-9e76cc02bd6a"
       }
     },
-    "owner": "garv23s-team"
+    "owner": "nirupamsharma73"
   }
 }

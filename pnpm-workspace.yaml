@@ -33,6 +33,15 @@ minimumReleaseAgeExclude:
   # this setting guards against does not apply to our own packages.
   - '@replit/*'
   - stripe-replit-sync
+  # Clerk auth SDK (explicit integration; remove once versions are >1 day old).
+  - '@clerk/*'
+  # Expo SDK 58 packages may be within the 1-day age window during upgrade.
+  - 'expo'
+  - 'expo-*'
+  - '@expo/*'
+  - 'babel-preset-expo'
+  - 'react-native'
+  - 'react-native-*'
 
 packages:
   - artifacts/*
@@ -55,10 +64,10 @@ catalog:
   drizzle-orm: ^0.45.2
   framer-motion: ^12.23.24
   lucide-react: ^0.545.0
-  # Must be this exact version because expo requires it
-  react: 19.1.0
-  # Must be this exact version because expo requires it
-  react-dom: 19.1.0
+  # Must match Expo SDK (SDK 58 → React 19.3.0)
+  react: 19.3.0
+  # Must match Expo SDK (SDK 58 → React 19.3.0)
+  react-dom: 19.3.0
   tailwind-merge: ^3.3.1
   tailwindcss: ^4.1.14
   tsx: ^4.23.1
@@ -67,12 +76,6 @@ catalog:
   zod: ^3.25.76
 
 autoInstallPeers: false
-
-onlyBuiltDependencies:
-  - '@swc/core'
-  - esbuild
-  - msw
-  - unrs-resolver
 
 overrides:
   # replit uses linux-x64 only, we can exclude all other platforms
@@ -161,5 +164,7 @@ overrides:
 
 allowBuilds:
   '@google/genai': false
+  browser-tabs-lock: true
+  core-js: true
   esbuild: true
   protobufjs: false

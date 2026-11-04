@@ -10,7 +10,9 @@ import React, {
   useMemo,
   useState,
 } from "react";
+import { Platform } from "react-native";
 import type { OfficialLinkType } from "@/data/services";
+
 export interface UserProfile {
   name: string;
   email: string;
@@ -42,6 +44,7 @@ interface ContextValue {
     password?: string,
     profile?: UserProfile,
   ) => Promise<boolean>;
+  updateProfile: (profile: UserProfile) => Promise<void>;
   logOut: () => Promise<void>;
   toggleSaved: (id: string) => Promise<void>;
   startNewChat: () => string;
@@ -60,9 +63,34 @@ const KEYS = {
   // Account registered on this device. Kept on sign out so the user can log in again.
   account: "@saarthi/account",
   localCredential: "saarthi-local-credential",
+  webCredential: "@saarthi/local-credential",
   saved: "@saarthi/saved",
   chats: "@saarthi/chats",
 };
+
+async function saveLocalCredential(value: string) {
+  if (Platform.OS === "web") {
+    await AsyncStorage.setItem(KEYS.webCredential, value);
+    return;
+  }
+  await SecureStore.setItemAsync(KEYS.localCredential, value);
+}
+
+async function readLocalCredential() {
+  if (Platform.OS === "web") {
+    return AsyncStorage.getItem(KEYS.webCredential);
+  }
+  return SecureStore.getItemAsync(KEYS.localCredential);
+}
+
+async function clearLocalCredential() {
+  if (Platform.OS === "web") {
+    await AsyncStorage.removeItem(KEYS.webCredential);
+    return;
+  }
+  await SecureStore.deleteItemAsync(KEYS.localCredential);
+}
+
 const id = (prefix: string) =>
   prefix +
   "-" +
@@ -149,12 +177,11 @@ export function SaarthiProvider({ children }: { children: ReactNode }) {
           Crypto.CryptoDigestAlgorithm.SHA256,
           `${salt}:${password}`,
         );
-        await SecureStore.setItemAsync(
-          KEYS.localCredential,
+        await saveLocalCredential(
           JSON.stringify({ email: next.email, salt, passwordHash }),
         );
       } else if (account?.email !== next.email) {
-        await SecureStore.deleteItemAsync(KEYS.localCredential);
+        await clearLocalCredential();
       }
       await AsyncStorage.multiSet([
         [KEYS.account, JSON.stringify(next)],
@@ -172,7 +199,7 @@ export function SaarthiProvider({ children }: { children: ReactNode }) {
         // Google has already verified this email address.
         const sameAccount = account?.email === normalizedEmail;
         if (!sameAccount) {
-          await SecureStore.deleteItemAsync(KEYS.localCredential);
+          await clearLocalCredential();
         }
         const next = {
           name:
@@ -189,9 +216,7 @@ export function SaarthiProvider({ children }: { children: ReactNode }) {
       }
       if (!account || account.email !== normalizedEmail) return false;
       if (!password) return false;
-      const rawCredential = await SecureStore.getItemAsync(
-        KEYS.localCredential,
-      );
+      const rawCredential = await readLocalCredential();
       if (!rawCredential) return false;
       let credential: {
         email: string;
@@ -222,6 +247,21 @@ export function SaarthiProvider({ children }: { children: ReactNode }) {
     },
     [account],
   );
+  const updateProfile = useCallback(async (profile: UserProfile) => {
+    const next = {
+      name: profile.name.trim(),
+      email: profile.email.trim().toLowerCase(),
+    };
+    if (!next.name || !next.email.includes("@")) {
+      throw new Error("Enter a valid name and email.");
+    }
+    await AsyncStorage.multiSet([
+      [KEYS.account, JSON.stringify(next)],
+      [KEYS.user, JSON.stringify(next)],
+    ]);
+    setAccount(next);
+    setUser(next);
+  }, []);
   const logOut = useCallback(async () => {
     setUser(null);
     await AsyncStorage.removeItem(KEYS.user);
@@ -333,6 +373,7 @@ export function SaarthiProvider({ children }: { children: ReactNode }) {
       activeChatId,
       signUp,
       logIn,
+      updateProfile,
       logOut,
       toggleSaved,
       startNewChat,
@@ -351,6 +392,7 @@ export function SaarthiProvider({ children }: { children: ReactNode }) {
       activeChatId,
       signUp,
       logIn,
+      updateProfile,
       logOut,
       toggleSaved,
       startNewChat,

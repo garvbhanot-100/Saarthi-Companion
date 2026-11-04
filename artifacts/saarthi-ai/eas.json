@@ -8,19 +8,25 @@
       "developmentClient": true,
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://saarthi-companion.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://saarthi-companion.onrender.com",
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_cGVyZmVjdC1mbHktNTcxOC5jbGVyay5hY2NvdW50cy5kZXYk"
       }
     },
     "preview": {
       "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://saarthi-companion.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://saarthi-companion.onrender.com",
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_cGVyZmVjdC1mbHktNTcxOC5jbGVyay5hY2NvdW50cy5kZXYk"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://saarthi-companion.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://saarthi-companion.onrender.com",
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_cGVyZmVjdC1mbHktNTcxOC5jbGVyay5hY2NvdW50cy5kZXYk"
       }
     }
   },

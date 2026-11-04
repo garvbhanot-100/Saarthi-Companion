@@ -2,6 +2,16 @@ const { spawn } = require("node:child_process");
 const path = require("node:path");
 
 const env = { ...process.env };
+// Expo CLI can crash during version checks with:
+// "TypeError: Body is unusable: Body has already been read"
+// Skip that network doctor step so Metro can start reliably.
+if (env.EXPO_NO_DEPENDENCY_VALIDATION == null) {
+  env.EXPO_NO_DEPENDENCY_VALIDATION = "1";
+}
+// Large Windows monorepos often fail Metro's native watcher startup.
+if (env.CHOKIDAR_USEPOLLING == null) {
+  env.CHOKIDAR_USEPOLLING = "1";
+}
 if (env.REPLIT_EXPO_DEV_DOMAIN) {
   env.EXPO_PACKAGER_PROXY_URL = `https://${env.REPLIT_EXPO_DEV_DOMAIN}`;
   env.EXPO_PUBLIC_DOMAIN = env.REPLIT_DEV_DOMAIN;
