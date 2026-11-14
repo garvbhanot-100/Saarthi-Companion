@@ -1,6 +1,3 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Crypto from "expo-crypto";
-import * as SecureStore from "expo-secure-store";
 import React, {
   createContext,
   ReactNode,
@@ -8,10 +5,28 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
-import { Platform } from "react-native";
 import type { OfficialLinkType } from "@/data/services";
+import {
+  isPremiumPlan,
+  type UserPlan,
+  canAccessService,
+} from "@/constants/subscription";
+import {
+  isRemoteDataEnabled,
+  readSessionToken,
+  remoteFetchState,
+  remoteLogin,
+  remoteLogout,
+  remotePushChats,
+  remotePushSaved,
+  remoteSignUp,
+  remoteUpdateProfile,
+  remoteUpgradePremium,
+  subscribeRemoteState,
+} from "@/services/saarthiRemote";
 
 export interface UserProfile {
   name: string;
@@ -35,6 +50,8 @@ interface ContextValue {
   hydrated: boolean;
   hydrationError: string | null;
   user: UserProfile | null;
+  plan: UserPlan;
+  isPremium: boolean;
   savedServiceIds: string[];
   chats: ChatSession[];
   activeChatId: string | null;
@@ -46,6 +63,7 @@ interface ContextValue {
   ) => Promise<boolean>;
   updateProfile: (profile: UserProfile) => Promise<void>;
   logOut: () => Promise<void>;
+  upgradeToPremium: () => Promise<void>;
   toggleSaved: (id: string) => Promise<void>;
   startNewChat: () => string;
   appendMessage: (
@@ -57,39 +75,6 @@ interface ContextValue {
   deleteChat: (id: string) => void;
   openChat: (id: string) => void;
 }
-const KEYS = {
-  // Signed-in session. Cleared on sign out.
-  user: "@saarthi/user",
-  // Account registered on this device. Kept on sign out so the user can log in again.
-  account: "@saarthi/account",
-  localCredential: "saarthi-local-credential",
-  webCredential: "@saarthi/local-credential",
-  saved: "@saarthi/saved",
-  chats: "@saarthi/chats",
-};
-
-async function saveLocalCredential(value: string) {
-  if (Platform.OS === "web") {
-    await AsyncStorage.setItem(KEYS.webCredential, value);
-    return;
-  }
-  await SecureStore.setItemAsync(KEYS.localCredential, value);
-}
-
-async function readLocalCredential() {
-  if (Platform.OS === "web") {
-    return AsyncStorage.getItem(KEYS.webCredential);
-  }
-  return SecureStore.getItemAsync(KEYS.localCredential);
-}
-
-async function clearLocalCredential() {
-  if (Platform.OS === "web") {
-    await AsyncStorage.removeItem(KEYS.webCredential);
-    return;
-  }
-  await SecureStore.deleteItemAsync(KEYS.localCredential);
-}
 
 const id = (prefix: string) =>
   prefix +
@@ -97,196 +82,187 @@ const id = (prefix: string) =>
   Date.now().toString() +
   "-" +
   Math.random().toString(36).slice(2, 8);
+
 const Context = createContext<ContextValue | null>(null);
+
 export function SaarthiProvider({ children }: { children: ReactNode }) {
-  const [hydrated, setHydrated] = useState(false),
-    [hydrationError, setHydrationError] = useState<string | null>(null),
-    [user, setUser] = useState<UserProfile | null>(null),
-    [account, setAccount] = useState<UserProfile | null>(null),
-    [savedServiceIds, setSaved] = useState<string[]>([]),
-    [chats, setChats] = useState<ChatSession[]>([]),
-    [activeChatId, setActive] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+  const [hydrationError, setHydrationError] = useState<string | null>(null);
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [plan, setPlan] = useState<UserPlan>("free");
+  const [savedServiceIds, setSaved] = useState<string[]>([]);
+  const [chats, setChats] = useState<ChatSession[]>([]);
+  const [activeChatId, setActive] = useState<string | null>(null);
+  const sessionTokenRef = useRef<string | null>(null);
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
+
+  const applyRemoteState = useCallback(
+    (state: {
+      user: UserProfile;
+      plan: UserPlan;
+      savedServiceIds: string[];
+      chats: ChatSession[];
+    }) => {
+      setUser(state.user);
+      setPlan(state.plan);
+      setSaved(state.savedServiceIds);
+      setChats(state.chats);
+    },
+    [],
+  );
+
   useEffect(() => {
     let mounted = true;
-    Promise.all([
-      AsyncStorage.getItem(KEYS.user),
-      AsyncStorage.getItem(KEYS.account),
-      AsyncStorage.getItem(KEYS.saved),
-      AsyncStorage.getItem(KEYS.chats),
-    ])
-      .then(([u, a, s, c]) => {
-        if (!mounted) return;
-        let failedToRead = false;
-        const parseStored = <T,>(
-          raw: string | null,
-          key: string,
-          setValue: (value: T) => void,
-        ) => {
-          if (!raw) return;
-          try {
-            setValue(JSON.parse(raw) as T);
-          } catch (error) {
-            failedToRead = true;
-            console.error(`Could not parse saved Saarthi data (${key}):`, error);
-          }
-        };
-        let storedUser: UserProfile | null = null;
-        parseStored<UserProfile>(u, KEYS.user, (value) => {
-          storedUser = value;
-          setUser(value);
-        });
-        let storedAccount: UserProfile | null = null;
-        parseStored<UserProfile>(a, KEYS.account, (value) => {
-          storedAccount = value;
-        });
-        // Profiles saved before accounts were tracked separately.
-        if (!storedAccount && storedUser) {
-          storedAccount = storedUser;
-          AsyncStorage.setItem(KEYS.account, JSON.stringify(storedUser)).catch(
-            () => undefined,
-          );
-        }
-        setAccount(storedAccount);
-        parseStored<string[]>(s, KEYS.saved, setSaved);
-        parseStored<ChatSession[]>(c, KEYS.chats, setChats);
-        if (failedToRead) {
-          setHydrationError("Some saved profile data could not be loaded.");
-        }
-        setHydrated(true);
-      })
-      .catch((error) => {
-        console.error("Could not load saved Saarthi data:", error);
+
+    async function hydrate() {
+      if (!isRemoteDataEnabled()) {
         if (mounted) {
-          setHydrationError("Saved profile data could not be loaded.");
+          setHydrationError(
+            "Set EXPO_PUBLIC_API_URL to your live API server so profile and chats stay in real time.",
+          );
           setHydrated(true);
         }
-      });
+        return;
+      }
+
+      try {
+        const token = await readSessionToken();
+        if (!token) {
+          if (mounted) setHydrated(true);
+          return;
+        }
+        const state = await remoteFetchState(token);
+        if (!mounted) return;
+        if (!state) {
+          sessionTokenRef.current = null;
+          setSessionToken(null);
+          setHydrated(true);
+          return;
+        }
+        sessionTokenRef.current = state.sessionToken;
+        setSessionToken(state.sessionToken);
+        applyRemoteState(state);
+        setHydrated(true);
+      } catch (error) {
+        console.error("Could not load Saarthi cloud data:", error);
+        if (mounted) {
+          setHydrationError("Could not reach the live Saarthi server.");
+          setHydrated(true);
+        }
+      }
+    }
+
+    void hydrate();
     return () => {
       mounted = false;
     };
-  }, []);
-  const signUp = useCallback(
-    async (profile: UserProfile, password?: string) => {
-      const next = {
-        name: profile.name.trim(),
-        email: profile.email.trim().toLowerCase(),
-      };
-      if (password) {
-        const salt = Crypto.randomUUID();
-        const passwordHash = await Crypto.digestStringAsync(
-          Crypto.CryptoDigestAlgorithm.SHA256,
-          `${salt}:${password}`,
-        );
-        await saveLocalCredential(
-          JSON.stringify({ email: next.email, salt, passwordHash }),
-        );
-      } else if (account?.email !== next.email) {
-        await clearLocalCredential();
-      }
-      await AsyncStorage.multiSet([
-        [KEYS.account, JSON.stringify(next)],
-        [KEYS.user, JSON.stringify(next)],
-      ]);
-      setAccount(next);
-      setUser(next);
-    },
-    [account],
-  );
+  }, [applyRemoteState]);
+
+  useEffect(() => {
+    if (!sessionToken) return undefined;
+    return subscribeRemoteState(sessionToken, applyRemoteState);
+  }, [sessionToken, applyRemoteState]);
+
+  const signUp = useCallback(async (profile: UserProfile, password?: string) => {
+    const result = await remoteSignUp(profile, password);
+    sessionTokenRef.current = result.sessionToken;
+    setSessionToken(result.sessionToken);
+    applyRemoteState(result);
+  }, [applyRemoteState]);
+
   const logIn = useCallback(
     async (email: string, password?: string, profile?: UserProfile) => {
-      const normalizedEmail = email.trim().toLowerCase();
-      if (profile !== undefined) {
-        // Google has already verified this email address.
-        const sameAccount = account?.email === normalizedEmail;
-        if (!sameAccount) {
-          await clearLocalCredential();
-        }
-        const next = {
-          name:
-            profile.name.trim() || (sameAccount ? account.name : ""),
-          email: normalizedEmail,
-        };
-        await AsyncStorage.multiSet([
-          [KEYS.account, JSON.stringify(next)],
-          [KEYS.user, JSON.stringify(next)],
-        ]);
-        setAccount(next);
-        setUser(next);
-        return true;
-      }
-      if (!account || account.email !== normalizedEmail) return false;
-      if (!password) return false;
-      const rawCredential = await readLocalCredential();
-      if (!rawCredential) return false;
-      let credential: {
-        email: string;
-        salt: string;
-        passwordHash: string;
-      };
       try {
-        credential = JSON.parse(rawCredential);
+        const result = await remoteLogin(email, password, profile);
+        sessionTokenRef.current = result.sessionToken;
+        setSessionToken(result.sessionToken);
+        applyRemoteState(result);
+        return true;
       } catch (error) {
-        console.error("Could not parse the saved local credential:", error);
+        console.error("Login failed:", error);
         return false;
       }
-      if (
-        credential.email !== normalizedEmail ||
-        !credential.salt ||
-        !credential.passwordHash
-      ) {
-        return false;
-      }
-      const passwordHash = await Crypto.digestStringAsync(
-        Crypto.CryptoDigestAlgorithm.SHA256,
-        `${credential.salt}:${password}`,
-      );
-      if (passwordHash !== credential.passwordHash) return false;
-      await AsyncStorage.setItem(KEYS.user, JSON.stringify(account));
-      setUser(account);
-      return true;
     },
-    [account],
+    [applyRemoteState],
   );
-  const updateProfile = useCallback(async (profile: UserProfile) => {
-    const next = {
-      name: profile.name.trim(),
-      email: profile.email.trim().toLowerCase(),
-    };
-    if (!next.name || !next.email.includes("@")) {
-      throw new Error("Enter a valid name and email.");
-    }
-    await AsyncStorage.multiSet([
-      [KEYS.account, JSON.stringify(next)],
-      [KEYS.user, JSON.stringify(next)],
-    ]);
-    setAccount(next);
-    setUser(next);
-  }, []);
+
+  const updateProfile = useCallback(
+    async (profile: UserProfile) => {
+      const token = sessionTokenRef.current;
+      if (!token) throw new Error("Not signed in.");
+      const next = await remoteUpdateProfile(token, profile);
+      applyRemoteState({
+        user: next.user,
+        plan: next.plan,
+        savedServiceIds: next.savedServiceIds,
+        chats: next.chats,
+      });
+    },
+    [applyRemoteState],
+  );
+
+  const upgradeToPremium = useCallback(async () => {
+    const token = sessionTokenRef.current;
+    if (!token) throw new Error("Not signed in.");
+    const next = await remoteUpgradePremium(token);
+    applyRemoteState(next);
+  }, [applyRemoteState]);
+
   const logOut = useCallback(async () => {
+    const token = sessionTokenRef.current;
+    if (token) await remoteLogout(token);
+    sessionTokenRef.current = null;
+    setSessionToken(null);
     setUser(null);
-    await AsyncStorage.removeItem(KEYS.user);
+    setPlan("free");
+    setSaved([]);
+    setChats([]);
+    setActive(null);
   }, []);
+
   const toggleSaved = useCallback(async (serviceId: string) => {
+    const token = sessionTokenRef.current;
+    if (!token) return;
+    if (!canAccessService(serviceId, plan)) return;
+    let next: string[] = [];
     setSaved((current) => {
-      const next = current.includes(serviceId)
+      next = current.includes(serviceId)
         ? current.filter((x) => x !== serviceId)
         : [...current, serviceId];
-      AsyncStorage.setItem(KEYS.saved, JSON.stringify(next)).catch(
-        () => undefined,
-      );
       return next;
     });
+    try {
+      await remotePushSaved(token, next);
+    } catch (error) {
+      console.error("Could not sync saved services:", error);
+    }
+  }, [plan]);
+
+  const persistChats = useCallback(async (next: ChatSession[]) => {
+    const token = sessionTokenRef.current;
+    if (!token) return;
+    try {
+      await remotePushChats(token, next);
+    } catch (error) {
+      console.error("Could not sync chats:", error);
+    }
   }, []);
+
   const startNewChat = useCallback(() => {
-    const chatId = id("chat"),
-      now = new Date().toISOString();
-    setChats((current) => [
-      { id: chatId, title: "New conversation", updatedAt: now, messages: [] },
-      ...current,
-    ]);
+    const chatId = id("chat");
+    const now = new Date().toISOString();
+    setChats((current) => {
+      const next = [
+        { id: chatId, title: "New conversation", updatedAt: now, messages: [] },
+        ...current,
+      ];
+      void persistChats(next);
+      return next;
+    });
     setActive(chatId);
     return chatId;
-  }, []);
+  }, [persistChats]);
+
   const appendMessage = useCallback(
     (chatId: string, message: Omit<ChatMessage, "id" | "createdAt">) => {
       setChats((current) => {
@@ -308,66 +284,75 @@ export function SaarthiProvider({ children }: { children: ReactNode }) {
             messages,
           };
         });
-        AsyncStorage.setItem(KEYS.chats, JSON.stringify(next)).catch(
-          () => undefined,
-        );
+        void persistChats(next);
         return next;
       });
     },
-    [],
+    [persistChats],
   );
-  const removeMessage = useCallback((chatId: string, messageId: string) => {
-    setChats((current) => {
-      const next = current.map((chat) =>
-        chat.id === chatId
-          ? {
-              ...chat,
-              messages: chat.messages.filter(
-                (message) => message.id !== messageId,
-              ),
-              updatedAt: new Date().toISOString(),
-            }
-          : chat,
-      );
-      AsyncStorage.setItem(KEYS.chats, JSON.stringify(next)).catch(
-        () => undefined,
-      );
-      return next;
-    });
-  }, []);
-  const clearChat = useCallback((chatId: string) => {
-    setChats((current) => {
-      const next = current.map((chat) =>
-        chat.id === chatId
-          ? {
-              ...chat,
-              title: "New conversation",
-              messages: [],
-              updatedAt: new Date().toISOString(),
-            }
-          : chat,
-      );
-      AsyncStorage.setItem(KEYS.chats, JSON.stringify(next)).catch(
-        () => undefined,
-      );
-      return next;
-    });
-  }, []);
-  const deleteChat = useCallback((chatId: string) => {
-    setChats((current) => {
-      const next = current.filter((chat) => chat.id !== chatId);
-      AsyncStorage.setItem(KEYS.chats, JSON.stringify(next)).catch(
-        () => undefined,
-      );
-      return next;
-    });
-    setActive((current) => (current === chatId ? null : current));
-  }, []);
+
+  const removeMessage = useCallback(
+    (chatId: string, messageId: string) => {
+      setChats((current) => {
+        const next = current.map((chat) =>
+          chat.id === chatId
+            ? {
+                ...chat,
+                messages: chat.messages.filter(
+                  (message) => message.id !== messageId,
+                ),
+                updatedAt: new Date().toISOString(),
+              }
+            : chat,
+        );
+        void persistChats(next);
+        return next;
+      });
+    },
+    [persistChats],
+  );
+
+  const clearChat = useCallback(
+    (chatId: string) => {
+      setChats((current) => {
+        const next = current.map((chat) =>
+          chat.id === chatId
+            ? {
+                ...chat,
+                title: "New conversation",
+                messages: [],
+                updatedAt: new Date().toISOString(),
+              }
+            : chat,
+        );
+        void persistChats(next);
+        return next;
+      });
+    },
+    [persistChats],
+  );
+
+  const deleteChat = useCallback(
+    (chatId: string) => {
+      setChats((current) => {
+        const next = current.filter((chat) => chat.id !== chatId);
+        void persistChats(next);
+        return next;
+      });
+      setActive((current) => (current === chatId ? null : current));
+    },
+    [persistChats],
+  );
+
+  const isPremium = isPremiumPlan(plan);
+
   const value = useMemo(
     () => ({
       hydrated,
       hydrationError,
       user,
+      plan,
+      isPremium,
       savedServiceIds,
       chats,
       activeChatId,
@@ -375,6 +360,7 @@ export function SaarthiProvider({ children }: { children: ReactNode }) {
       logIn,
       updateProfile,
       logOut,
+      upgradeToPremium,
       toggleSaved,
       startNewChat,
       appendMessage,
@@ -387,6 +373,8 @@ export function SaarthiProvider({ children }: { children: ReactNode }) {
       hydrated,
       hydrationError,
       user,
+      plan,
+      isPremium,
       savedServiceIds,
       chats,
       activeChatId,
@@ -394,6 +382,7 @@ export function SaarthiProvider({ children }: { children: ReactNode }) {
       logIn,
       updateProfile,
       logOut,
+      upgradeToPremium,
       toggleSaved,
       startNewChat,
       appendMessage,

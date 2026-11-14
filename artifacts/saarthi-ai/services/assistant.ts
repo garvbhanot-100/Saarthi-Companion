@@ -1,3 +1,7 @@
+import {
+  FREE_TIER_SERVICE_IDS,
+  type UserPlan,
+} from "@/constants/subscription";
 import { services, type OfficialLinkType, type ServiceRecord } from "@/data/services";
 import type { LanguageCode } from "@/context/LanguagesContext";
 import Constants from "expo-constants";
@@ -137,6 +141,22 @@ function scoreServices(question: string) {
   });
 }
 
+export function rankQuestionServices(question: string) {
+  return scoreServices(question)
+    .filter(({ score }) => score > 0)
+    .sort((a, b) => b.score - a.score);
+}
+
+const freeTierSet = new Set<string>(FREE_TIER_SERVICE_IDS);
+
+export function isFreeQuestionAllowed(question: string): boolean {
+  const ranked = rankQuestionServices(question);
+  if (ranked.length === 0) return true;
+  const top = ranked[0];
+  if (top.score < 2) return true;
+  return freeTierSet.has(top.service.id);
+}
+
 // The backend rejects a serviceContext over 128,000 characters; stay under it.
 const MAX_SERVICE_CONTEXT_CHARS = 120_000;
 
@@ -158,19 +178,31 @@ const fullContextRow = (service: ServiceRecord) =>
 // Sends the whole catalog while it fits. Otherwise the services matching the
 // question keep their full rows and the rest are sent as name, category and
 // URL only, in the same column positions the backend reads.
-function buildServiceContext(question: string): string {
-  const fullRows = services.map(fullContextRow);
+function catalogForPlan(plan?: UserPlan) {
+  if (plan !== "free") return services;
+  return services.filter((s) => freeTierSet.has(s.id));
+}
+
+function buildServiceContext(question: string, plan?: UserPlan): string {
+  const catalog = catalogForPlan(plan);
+  const fullRows = catalog.map(fullContextRow);
   const fullContext = fullRows.join("\n");
   if (fullContext.length <= MAX_SERVICE_CONTEXT_CHARS) return fullContext;
 
-  const compactRows = services.map((service) =>
+  const compactRows = catalog.map((service) =>
     toContextRow([service.name, service.category, "", service.officialUrl]),
   );
   let length = compactRows.join("\n").length;
   const expanded = new Set<number>();
+  const catalogIndex = new Map(catalog.map((service, index) => [service.id, index]));
   const relevant = scoreServices(question)
-    .map(({ score }, index) => ({ score, index }))
-    .filter(({ score }) => score > 0)
+    .filter(
+      ({ service, score }) => score > 0 && catalogIndex.has(service.id),
+    )
+    .map(({ service, score }) => ({
+      score,
+      index: catalogIndex.get(service.id)!,
+    }))
     .sort((a, b) => b.score - a.score);
   for (const { index } of relevant) {
     const extra = fullRows[index].length - compactRows[index].length;
@@ -179,7 +211,7 @@ function buildServiceContext(question: string): string {
     length += extra;
   }
 
-  return services
+  return catalog
     .map((_, index) =>
       expanded.has(index) ? fullRows[index] : compactRows[index],
     )
@@ -211,8 +243,9 @@ function findSources(question: string, content: string): AssistantSource[] {
 export async function getAssistantReply(
   question: string,
   language: LanguageCode,
+  plan: UserPlan = "premium",
 ): Promise<AssistantReply> {
-  const serviceContext = buildServiceContext(question);
+  const serviceContext = buildServiceContext(question, plan);
 
   let response: Response;
   const controller = new AbortController();

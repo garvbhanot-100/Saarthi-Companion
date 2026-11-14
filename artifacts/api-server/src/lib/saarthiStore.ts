@@ -1,0 +1,331 @@
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { prisma, type Prisma } from "@workspace/db";
+
+const SESSION_DAYS = 30;
+
+export type UserProfileDto = { name: string; email: string };
+
+export type ChatMessageDto = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+  sources?: unknown;
+  isError?: boolean;
+};
+
+export type ChatSessionDto = {
+  id: string;
+  title: string;
+  updatedAt: string;
+  messages: ChatMessageDto[];
+};
+
+export type UserPlan = "free" | "premium";
+
+export type UserStateDto = {
+  user: UserProfileDto;
+  plan: UserPlan;
+  savedServiceIds: string[];
+  chats: ChatSessionDto[];
+};
+
+function normalizePlan(plan: string | null | undefined): UserPlan {
+  return plan === "premium" ? "premium" : "free";
+}
+
+function hashPassword(salt: string, password: string) {
+  return createHash("sha256").update(`${salt}:${password}`).digest("hex");
+}
+
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
+}
+
+function sessionExpiry() {
+  const d = new Date();
+  d.setDate(d.getDate() + SESSION_DAYS);
+  return d;
+}
+
+function mapUserState(user: {
+  name: string;
+  email: string;
+  plan: string;
+  saved: { serviceId: string }[];
+  chats: {
+    id: string;
+    title: string;
+    updatedAt: Date;
+    messages: {
+      id: string;
+      role: string;
+      content: string;
+      createdAt: Date;
+      sources: Prisma.JsonValue | null;
+      isError: boolean | null;
+    }[];
+  }[];
+}): UserStateDto {
+  return {
+    user: { name: user.name, email: user.email },
+    plan: normalizePlan(user.plan),
+    savedServiceIds: user.saved.map((s) => s.serviceId),
+    chats: user.chats.map((c) => ({
+      id: c.id,
+      title: c.title,
+      updatedAt: c.updatedAt.toISOString(),
+      messages: c.messages.map((m) => ({
+        id: m.id,
+        role: m.role as "user" | "assistant",
+        content: m.content,
+        createdAt: m.createdAt.toISOString(),
+        sources: m.sources ?? undefined,
+        isError: m.isError ?? undefined,
+      })),
+    })),
+  };
+}
+
+const userStateInclude = {
+  saved: { select: { serviceId: true } },
+  chats: {
+    orderBy: { updatedAt: "desc" as const },
+    include: {
+      messages: { orderBy: { createdAt: "asc" as const } },
+    },
+  },
+} satisfies Prisma.SaarthiUserInclude;
+
+export async function createSession(userId: string) {
+  const token = randomBytes(32).toString("hex");
+  await prisma.saarthiSession.create({
+    data: {
+      token,
+      userId,
+      expiresAt: sessionExpiry(),
+    },
+  });
+  return token;
+}
+
+export async function resolveSession(
+  token: string | undefined,
+): Promise<string | null> {
+  if (!token?.trim()) return null;
+  const session = await prisma.saarthiSession.findUnique({
+    where: { token: token.trim() },
+  });
+  if (!session || session.expiresAt < new Date()) return null;
+  return session.userId;
+}
+
+export async function deleteSession(token: string) {
+  await prisma.saarthiSession.deleteMany({ where: { token } });
+}
+
+export async function loadUserState(userId: string): Promise<UserStateDto | null> {
+  const user = await prisma.saarthiUser.findUnique({
+    where: { id: userId },
+    include: userStateInclude,
+  });
+  if (!user) return null;
+  return mapUserState(user);
+}
+
+export async function signUpUser(
+  profile: UserProfileDto,
+  password?: string,
+): Promise<{ token: string; state: UserStateDto }> {
+  const email = normalizeEmail(profile.email);
+  const name = profile.name.trim();
+  if (!name || !email.includes("@")) {
+    throw new Error("INVALID_PROFILE");
+  }
+
+  const existing = await prisma.saarthiUser.findUnique({ where: { email } });
+  if (existing) {
+    throw new Error("EMAIL_TAKEN");
+  }
+
+  const salt = password ? randomUUID() : null;
+  const user = await prisma.saarthiUser.create({
+    data: {
+      email,
+      name,
+      lastLoginAt: new Date(),
+      ...(salt && password
+        ? {
+            credential: {
+              create: {
+                salt,
+                passwordHash: hashPassword(salt, password),
+              },
+            },
+          }
+        : {}),
+    },
+  });
+
+  const token = await createSession(user.id);
+  const state = (await loadUserState(user.id))!;
+  return { token, state };
+}
+
+export async function loginUser(
+  emailInput: string,
+  password?: string,
+  profile?: UserProfileDto,
+): Promise<{ token: string; state: UserStateDto } | null> {
+  const email = normalizeEmail(emailInput);
+  let user = await prisma.saarthiUser.findUnique({ where: { email } });
+
+  if (profile) {
+    const name = profile.name.trim() || user?.name || "";
+    if (!user) {
+      user = await prisma.saarthiUser.create({
+        data: { email, name, lastLoginAt: new Date() },
+      });
+    } else if (name && name !== user.name) {
+      user = await prisma.saarthiUser.update({
+        where: { id: user.id },
+        data: { name, lastLoginAt: new Date() },
+      });
+    } else {
+      await prisma.saarthiUser.update({
+        where: { id: user.id },
+        data: { lastLoginAt: new Date() },
+      });
+    }
+    const token = await createSession(user.id);
+    const state = (await loadUserState(user.id))!;
+    return { token, state };
+  }
+
+  if (!user || !password) return null;
+
+  const cred = await prisma.saarthiCredential.findUnique({
+    where: { userId: user.id },
+  });
+  if (!cred) return null;
+
+  const passwordHash = hashPassword(cred.salt, password);
+  if (passwordHash !== cred.passwordHash) return null;
+
+  await prisma.saarthiUser.update({
+    where: { id: user.id },
+    data: { lastLoginAt: new Date() },
+  });
+
+  const token = await createSession(user.id);
+  const state = (await loadUserState(user.id))!;
+  return { token, state };
+}
+
+export async function updateUserProfile(userId: string, profile: UserProfileDto) {
+  const email = normalizeEmail(profile.email);
+  const name = profile.name.trim();
+  if (!name || !email.includes("@")) {
+    throw new Error("INVALID_PROFILE");
+  }
+
+  const conflict = await prisma.saarthiUser.findUnique({ where: { email } });
+  if (conflict && conflict.id !== userId) {
+    throw new Error("EMAIL_TAKEN");
+  }
+
+  await prisma.saarthiUser.update({
+    where: { id: userId },
+    data: { name, email },
+  });
+}
+
+export async function replaceSavedServices(
+  userId: string,
+  serviceIds: string[],
+) {
+  await prisma.$transaction([
+    prisma.saarthiSavedService.deleteMany({ where: { userId } }),
+    ...(serviceIds.length > 0
+      ? [
+          prisma.saarthiSavedService.createMany({
+            data: serviceIds.map((serviceId) => ({ userId, serviceId })),
+          }),
+        ]
+      : []),
+  ]);
+}
+
+export async function upgradeUserToPremium(userId: string): Promise<UserStateDto> {
+  await prisma.saarthiUser.update({
+    where: { id: userId },
+    data: { plan: "premium" },
+  });
+  const state = await loadUserState(userId);
+  if (!state) throw new Error("NOT_FOUND");
+  return state;
+}
+
+export async function replaceChats(userId: string, chats: ChatSessionDto[]) {
+  await prisma.$transaction(async (tx) => {
+    await tx.saarthiChatMessage.deleteMany({
+      where: { chat: { userId } },
+    });
+    await tx.saarthiChat.deleteMany({ where: { userId } });
+
+    for (const chat of chats) {
+      await tx.saarthiChat.create({
+        data: {
+          id: chat.id,
+          userId,
+          title: chat.title,
+          updatedAt: new Date(chat.updatedAt),
+          messages: {
+            create: chat.messages.map((m) => ({
+              id: m.id,
+              role: m.role,
+              content: m.content,
+              createdAt: new Date(m.createdAt),
+              sources: m.sources as Prisma.InputJsonValue | undefined,
+              isError: m.isError ?? null,
+            })),
+          },
+        },
+      });
+    }
+  });
+}
+
+export type AdminUserRow = {
+  id: string;
+  name: string;
+  email: string;
+  plan: UserPlan;
+  createdAt: string;
+  lastLoginAt: string | null;
+  savedCount: number;
+  chatCount: number;
+  messageCount: number;
+};
+
+export async function listAllUsersForAdmin(): Promise<AdminUserRow[]> {
+  const users = await prisma.saarthiUser.findMany({
+    orderBy: { lastLoginAt: "desc" },
+    include: {
+      _count: { select: { saved: true, chats: true } },
+      chats: { select: { _count: { select: { messages: true } } } },
+    },
+  });
+
+  return users.map((user) => ({
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    plan: normalizePlan(user.plan),
+    createdAt: user.createdAt.toISOString(),
+    lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
+    savedCount: user._count.saved,
+    chatCount: user._count.chats,
+    messageCount: user.chats.reduce((n, c) => n + c._count.messages, 0),
+  }));
+}

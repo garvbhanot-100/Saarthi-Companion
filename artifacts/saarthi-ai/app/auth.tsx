@@ -22,6 +22,7 @@ import { MotionPressable } from "@/components/Motion";
 import { AppInput } from "@/components/UI";
 import { isClerkConfigured } from "@/constants/clerk";
 import { useLanguage } from "@/context/LanguagesContext";
+import { APP_DISPLAY_NAME } from "@/constants/brand";
 import { useSaarthi } from "@/context/SaarthiContext";
 import { useColors } from "@/hooks/useColors";
 
@@ -192,9 +193,7 @@ export default function Auth() {
                   style={s.brandMark}
                   resizeMode="cover"
                 />
-                <Text style={s.brandWord}>
-                  Saarthi <Text style={s.brandAccent}>AI</Text>
-                </Text>
+                <Text style={s.brandWord}>{APP_DISPLAY_NAME}</Text>
               </View>
 
             </View>

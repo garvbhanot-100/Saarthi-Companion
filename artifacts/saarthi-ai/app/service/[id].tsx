@@ -26,6 +26,7 @@ import {
   hasLocalizedServiceField,
   type LocalizedServiceContent,
 } from "@/data/serviceTransalations";
+import { canAccessService } from "@/constants/subscription";
 import { useSaarthi } from "@/context/SaarthiContext";
 import { useColors } from "@/hooks/useColors";
 import { useLanguage } from "@/context/LanguagesContext";
@@ -36,7 +37,7 @@ export default function Detail() {
   const i = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const item = getServiceById(id || "");
-  const { savedServiceIds, toggleSaved } = useSaarthi();
+  const { savedServiceIds, toggleSaved, plan } = useSaarthi();
   const { language, t } = useLanguage();
 
   const detailText = (key: TranslationKey) => {
@@ -58,6 +59,34 @@ export default function Detail() {
         <Text style={[s.title, { color: c.foreground }]}>
           {detailText("serviceNotFound")}
         </Text>
+        <GhostButton title={detailText("goBack")} onPress={() => router.back()} />
+      </View>
+    );
+  }
+
+  if (!canAccessService(item.id, plan)) {
+    return (
+      <View style={[s.notFound, { backgroundColor: c.background, padding: 24 }]}>
+        <Text style={[s.title, { color: c.foreground }]}>{t("serviceLockedTitle")}</Text>
+        <Text
+          style={[
+            s.title,
+            {
+              color: c.mutedForeground,
+              marginTop: 8,
+              fontSize: 15,
+              fontWeight: "400",
+            },
+          ]}
+        >
+          {t("serviceLockedDescription")}
+        </Text>
+        <View style={{ marginTop: 20, width: "100%" }}>
+          <PrimaryButton
+            title={t("unlockAllServicesCta")}
+            onPress={() => router.push("/premium")}
+          />
+        </View>
         <GhostButton title={detailText("goBack")} onPress={() => router.back()} />
       </View>
     );

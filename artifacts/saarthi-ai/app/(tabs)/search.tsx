@@ -22,6 +22,7 @@ import {
   getLocalizedService,
   hasLocalizedServiceField,
 } from "@/data/serviceTransalations";
+import { filterServicesForPlan } from "@/constants/subscription";
 import { useSaarthi } from "@/context/SaarthiContext";
 import { useColors } from "@/hooks/useColors";
 import { SectionHeading } from "@/components/UI";
@@ -41,7 +42,7 @@ export default function Search() {
   const insets = useSafeAreaInsets();
   const { t, language } = useLanguage();
   const [q, setQ] = useState("");
-  const { savedServiceIds, toggleSaved } = useSaarthi();
+  const { savedServiceIds, toggleSaved, plan, isPremium } = useSaarthi();
   // Home links here with ?category=… to open a specific tab.
   const { category: categoryParam } = useLocalSearchParams<{
     category?: string;
@@ -58,7 +59,7 @@ export default function Search() {
   // repeated on every keystroke.
   const localizedServices = useMemo(
     () =>
-      services.map((service) => {
+      filterServicesForPlan(services, plan).map((service) => {
         const localizedService = getLocalizedService(service.id, language);
         const name = hasLocalizedServiceField(service.id, language, "name")
           ? (localizedService?.name ?? service.name)
@@ -98,7 +99,7 @@ export default function Search() {
             .toLocaleLowerCase(),
         };
       }),
-    [language, t],
+    [language, plan, t],
   );
 
   const results = useMemo(() => {
@@ -138,6 +139,22 @@ export default function Search() {
             <Text style={[styles.caption, { color: c.mutedForeground }]}>
               {t("searchPageDescription")}
             </Text>
+
+            {!isPremium ? (
+              <MotionPressable
+                accessibilityRole="button"
+                onPress={() => router.push("/premium")}
+                style={[
+                  styles.upgradeStrip,
+                  { backgroundColor: c.primarySoft, borderColor: c.border },
+                ]}
+              >
+                <Feather name="star" size={16} color={c.primary} />
+                <Text style={[styles.upgradeStripText, { color: c.primary }]}>
+                  {t("freePlanSearchNote")}
+                </Text>
+              </MotionPressable>
+            ) : null}
 
             <View
               style={[
@@ -376,6 +393,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 22,
     marginTop: 11,
+  },
+  upgradeStrip: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 12,
+    marginTop: 14,
+    marginBottom: 4,
+  },
+  upgradeStripText: {
+    flex: 1,
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 12,
+    lineHeight: 17,
   },
   searchBox: {
     minHeight: 56,

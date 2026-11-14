@@ -1,6 +1,7 @@
 {
   "name": "@workspace/saarthi-ai",
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "Sartva — government services companion app",
   "private": true,
   "main": "expo-router/entry",
   "scripts": {

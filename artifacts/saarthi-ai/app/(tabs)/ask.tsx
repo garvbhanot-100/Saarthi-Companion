@@ -19,6 +19,7 @@ import {
   MotionPressable,
   TypingIndicator,
 } from "@/components/Motion";
+import { APP_DISPLAY_NAME } from "@/constants/brand";
 import type { TranslationKey } from "@/constants/translations";
 import { useLanguage } from "@/context/LanguagesContext";
 import { ChatMessage, useSaarthi } from "@/context/SaarthiContext";
@@ -27,6 +28,7 @@ import { useColors } from "@/hooks/useColors";
 import {
   findOfficialSource,
   getAssistantReply,
+  isFreeQuestionAllowed,
   isSafeHttpUrl,
   splitContentLinks,
 } from "@/services/assistant";
@@ -116,7 +118,9 @@ function Bubble({
           ]}
         >
           {!isUser ? (
-            <Text style={[s.roleLabel, { color: c.primary }]}>Saarthi</Text>
+            <Text style={[s.roleLabel, { color: c.primary }]}>
+              {APP_DISPLAY_NAME}
+            </Text>
           ) : null}
 
           <Text
@@ -247,6 +251,8 @@ export default function Ask() {
     appendMessage,
     removeMessage,
     clearChat,
+    plan,
+    isPremium,
   } = useSaarthi();
 
   const [sid, setSid] = useState(activeChatId);
@@ -308,7 +314,19 @@ export default function Ask() {
     setSending(true);
 
     try {
-      const response = await getAssistantReply(question, language);
+      if (!isPremium && !isFreeQuestionAllowed(question)) {
+        appendMessage(sid, {
+          role: "assistant",
+          content: t("askUpgradePremium"),
+        });
+        return;
+      }
+
+      const response = await getAssistantReply(
+        question,
+        language,
+        isPremium ? "premium" : "free",
+      );
 
       appendMessage(sid, {
         role: "assistant",
@@ -352,7 +370,7 @@ export default function Ask() {
     if (!SpeechRecognition) {
       Alert.alert(
         "Voice input unavailable",
-        "Voice input works in the installed Saarthi AI app. Please type your question here.",
+        `Voice input works in the installed ${APP_DISPLAY_NAME} app. Please type your question here.`,
       );
       return;
     }

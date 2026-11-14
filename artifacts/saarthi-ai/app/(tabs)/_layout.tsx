@@ -37,6 +37,11 @@ function Native() {
         <Label>{t("saved")}</Label>
       </NativeTabs.Trigger>
 
+      <NativeTabs.Trigger name="premium">
+        <Icon sf={{ default: "star", selected: "star.fill" }} />
+        <Label>{t("premium")}</Label>
+      </NativeTabs.Trigger>
+
       <NativeTabs.Trigger name="profile">
         <Icon sf={{ default: "person", selected: "person.fill" }} />
         <Label>{t("profile")}</Label>
@@ -117,6 +122,11 @@ function Classic() {
       <Tabs.Screen
         name="saved"
         options={{ title: t("saved"), tabBarIcon: tab("bookmark") }}
+      />
+
+      <Tabs.Screen
+        name="premium"
+        options={{ title: t("premium"), tabBarIcon: tab("star") }}
       />
 
       <Tabs.Screen

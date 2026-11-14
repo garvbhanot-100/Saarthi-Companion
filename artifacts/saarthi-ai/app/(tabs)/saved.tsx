@@ -4,6 +4,7 @@ import React from "react";
 import { FlatList, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { filterServicesForPlan } from "@/constants/subscription";
 import { services } from "@/data/services";
 import { useSaarthi } from "@/context/SaarthiContext";
 import { useColors } from "@/hooks/useColors";
@@ -15,9 +16,9 @@ export default function Saved() {
   const c = useColors();
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
-  const { savedServiceIds, toggleSaved } = useSaarthi();
+  const { savedServiceIds, toggleSaved, plan } = useSaarthi();
 
-  const saved = services.filter((service) =>
+  const saved = filterServicesForPlan(services, plan).filter((service) =>
     savedServiceIds.includes(service.id),
   );
 

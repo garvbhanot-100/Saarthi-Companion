@@ -16,6 +16,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CategoryTabs } from "@/components/CategoryTabs";
 import { FadeInView, MotionPressable } from "@/components/Motion";
 import { useLanguage } from "@/context/LanguagesContext";
+import { APP_DISPLAY_NAME } from "@/constants/brand";
+import { filterServicesForPlan } from "@/constants/subscription";
 import { useSaarthi } from "@/context/SaarthiContext";
 import { services } from "@/data/services";
 import { getHomeServiceText } from "@/data/serviceTransalations";
@@ -69,7 +71,7 @@ export default function Home() {
   const { t, language, hydrated } = useLanguage();
   const c = useColors();
   const insets = useSafeAreaInsets();
-  const { user, chats } = useSaarthi();
+  const { user, chats, plan } = useSaarthi();
 
   if (!hydrated) {
     return null;
@@ -88,7 +90,7 @@ export default function Home() {
     }
   };
 
-  const popularServices = services.slice(0, 3);
+  const popularServices = filterServicesForPlan(services, plan).slice(0, 3);
   const displayName = user?.name?.trim()?.split(/\s+/)[0];
 
   return (
@@ -117,9 +119,7 @@ export default function Home() {
                   style={styles.brandMark}
                   resizeMode="cover"
                 />
-                <Text style={styles.brandWord}>
-                  Saarthi <Text style={styles.brandAccent}>AI</Text>
-                </Text>
+                <Text style={styles.brandWord}>{APP_DISPLAY_NAME}</Text>
               </View>
 
               <MotionPressable

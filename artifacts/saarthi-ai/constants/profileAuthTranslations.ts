@@ -13,7 +13,7 @@ export const profileAuthTranslations: Record<
     profileAuthSignupDescription:
       "Create a profile to keep saved services and chats together.",
     profileAuthLoginDescription:
-      "Sign in to access your local Saarthi profile.",
+      "Sign in to access your local Sartva profile.",
     profileAuthLogin: "Log in",
     profileAuthCreateAccount: "Create account",
     profileAuthFullName: "Full name",
@@ -34,7 +34,7 @@ export const profileAuthTranslations: Record<
     profileAuthForgotPassword: "Forgot your password?",
     profileAuthSecureAuthentication: "Why secure authentication matters",
     profileAuthPreviewDisclosure:
-      "Preview mode keeps only your profile on this device. No application is submitted through Saarthi.",
+      "Preview mode keeps only your profile on this device. No application is submitted through Sartva.",
     profileAuthInvalidEmail: "Enter a valid email address.",
     profileAuthNameRequired: "Enter your full name.",
     profileAuthPasswordMinimum: "Use at least 8 characters.",

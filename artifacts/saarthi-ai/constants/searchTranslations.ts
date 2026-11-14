@@ -8,7 +8,7 @@ export const searchTranslations: Record<
     searchEyebrow: "DISCOVER",
     searchPageTitle: "Search government services and schemes",
     searchPageDescription:
-      "Search services, schemes, documents, or categories in Saarthi's official-source catalog.",
+      "Search services, schemes, documents, or categories in Sartva's official-source catalog.",
     searchPlaceholder: "Search services, schemes, documents...",
     suggestionScholarships: "Scholarships",
     suggestionAadhaar: "Aadhaar",
@@ -24,9 +24,9 @@ export const searchTranslations: Record<
     searchViewDetails: "View details",
     noVerifiedMatch: "No verified match yet",
     noSearchResultsHelp:
-      "Try a broader search or ask Saarthi to help you find the right service.",
+      "Try a broader search or ask Sartva to help you find the right service.",
     searchClear: "Clear search",
-    searchAskSaarthi: "Ask Saarthi",
+    searchAskSaarthi: "Ask Sartva",
   },
   as: {
     searchEyebrow: "অন্বেষণ",

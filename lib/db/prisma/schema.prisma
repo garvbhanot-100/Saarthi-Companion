@@ -1,0 +1,80 @@
+// Supabase Postgres — set DATABASE_URL (pooler) and DIRECT_URL (migrations) in .env
+// Dashboard → Project Settings → Database → Connection string
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model SaarthiUser {
+  id          String    @id @default(uuid()) @db.Uuid
+  email       String    @unique
+  name        String
+  plan        String    @default("free")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastLoginAt DateTime? @map("last_login_at") @db.Timestamptz(6)
+
+  credential SaarthiCredential?
+  sessions   SaarthiSession[]
+  saved      SaarthiSavedService[]
+  chats      SaarthiChat[]
+
+  @@map("saarthi_users")
+}
+
+model SaarthiCredential {
+  userId       String      @id @map("user_id") @db.Uuid
+  user         SaarthiUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  salt         String
+  passwordHash String      @map("password_hash")
+
+  @@map("saarthi_credentials")
+}
+
+model SaarthiSession {
+  token     String      @id
+  userId    String      @map("user_id") @db.Uuid
+  user      SaarthiUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt DateTime    @map("expires_at") @db.Timestamptz(6)
+
+  @@map("saarthi_sessions")
+}
+
+model SaarthiSavedService {
+  userId    String      @map("user_id") @db.Uuid
+  serviceId String      @map("service_id")
+  user      SaarthiUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, serviceId])
+  @@map("saarthi_saved_services")
+}
+
+model SaarthiChat {
+  id        String               @id
+  userId    String               @map("user_id") @db.Uuid
+  user      SaarthiUser          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  updatedAt DateTime             @map("updated_at") @db.Timestamptz(6)
+  messages  SaarthiChatMessage[]
+
+  @@map("saarthi_chats")
+}
+
+model SaarthiChatMessage {
+  id        String      @id
+  chatId    String      @map("chat_id")
+  chat      SaarthiChat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  role      String
+  content   String
+  createdAt DateTime    @map("created_at") @db.Timestamptz(6)
+  sources   Json?
+  isError   Boolean?    @map("is_error")
+
+  @@map("saarthi_chat_messages")
+}
