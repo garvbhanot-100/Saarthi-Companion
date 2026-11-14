@@ -1,4 +1,5 @@
 import type { Request } from "express";
+import { resolveAdminEmailFromClerkToken } from "./clerkAdminAuth";
 
 const DEFAULT_ADMIN_EMAILS = [
   "aaniya1985@gmail.com",
@@ -30,8 +31,23 @@ export function getAdminSecretFromEnv() {
   );
 }
 
-export function adminRequestAuthorized(req: Request): boolean {
+function clerkBearerFromRequest(req: Request): string {
+  const header = req.headers.authorization?.replace(/^Bearer\s+/i, "").trim();
+  if (header) return header;
+  const query =
+    typeof req.query.clerk_token === "string" ? req.query.clerk_token.trim() : "";
+  return query;
+}
+
+export async function adminRequestAuthorized(req: Request): Promise<boolean> {
   const allowedEmails = getConfiguredAdminEmails();
+
+  const clerkToken = clerkBearerFromRequest(req);
+  if (clerkToken) {
+    const email = await resolveAdminEmailFromClerkToken(clerkToken);
+    return Boolean(email && allowedEmails.includes(email));
+  }
+
   const expectedSecret = getAdminSecretFromEnv();
   if (!expectedSecret) return false;
 

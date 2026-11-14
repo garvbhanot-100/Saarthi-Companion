@@ -7,7 +7,8 @@ export const DEFAULT_ADMIN_EMAIL = "aaniya1985@gmail.com";
 
 export type AdminCredentials = {
   email: string;
-  password: string;
+  password?: string;
+  getClerkToken?: () => Promise<string | null>;
 };
 
 export type AdminUserRow = {
@@ -38,17 +39,25 @@ export type UserDetail = {
   }[];
 };
 
-function adminHeaders(creds: AdminCredentials) {
-  return {
+async function adminHeaders(creds: AdminCredentials) {
+  const base: Record<string, string> = {
     "Content-Type": "application/json",
     "x-admin-email": creds.email.trim().toLowerCase(),
-    "x-admin-password": creds.password,
   };
+  if (creds.getClerkToken) {
+    const token = await creds.getClerkToken();
+    if (!token) throw new Error("Could not get sign-in token");
+    base.Authorization = `Bearer ${token}`;
+    return base;
+  }
+  if (!creds.password) throw new Error("Missing admin password");
+  base["x-admin-password"] = creds.password;
+  return base;
 }
 
 export async function fetchUsers(creds: AdminCredentials) {
   const res = await fetch(`${apiBase()}/api/admin/users`, {
-    headers: adminHeaders(creds),
+    headers: await adminHeaders(creds),
   });
   if (!res.ok) throw new Error("Could not load users");
   const data = (await res.json()) as { users: AdminUserRow[] };
@@ -60,7 +69,7 @@ export async function fetchUserDetail(
   userId: string,
 ) {
   const res = await fetch(`${apiBase()}/api/admin/users/${userId}`, {
-    headers: adminHeaders(creds),
+    headers: await adminHeaders(creds),
   });
   if (!res.ok) throw new Error("Could not load user");
   return (await res.json()) as UserDetail;
@@ -70,20 +79,40 @@ export function subscribeAdminUsers(
   creds: AdminCredentials,
   onUsers: (users: AdminUserRow[]) => void,
 ) {
-  const params = new URLSearchParams({
-    email: creds.email.trim().toLowerCase(),
-    secret: creds.password,
-  });
-  const url = `${apiBase()}/api/admin/stream?${params.toString()}`;
-  const es = new EventSource(url);
-  es.onmessage = (event) => {
-    try {
-      const parsed = JSON.parse(event.data) as { users: AdminUserRow[] };
-      onUsers(parsed.users);
-    } catch {
-      /* ignore */
+  let es: EventSource | null = null;
+  let closed = false;
+
+  const connect = async () => {
+    if (closed) return;
+    const params = new URLSearchParams();
+    if (creds.getClerkToken) {
+      const token = await creds.getClerkToken();
+      if (!token) return;
+      params.set("clerk_token", token);
+    } else {
+      params.set("email", creds.email.trim().toLowerCase());
+      params.set("secret", creds.password ?? "");
     }
+    es?.close();
+    const url = `${apiBase()}/api/admin/stream?${params.toString()}`;
+    es = new EventSource(url);
+    es.onmessage = (event) => {
+      try {
+        const parsed = JSON.parse(event.data) as { users: AdminUserRow[] };
+        onUsers(parsed.users);
+      } catch {
+        /* ignore */
+      }
+    };
+    es.onerror = () => {
+      es?.close();
+      if (!closed) void connect();
+    };
   };
-  es.onerror = () => {};
-  return () => es.close();
+
+  void connect();
+  return () => {
+    closed = true;
+    es?.close();
+  };
 }

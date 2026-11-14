@@ -9,11 +9,13 @@ import { adminRequestAuthorized } from "../lib/adminAuth";
 const router: IRouter = Router();
 
 function requireAdmin(req: Request, res: Response, next: () => void) {
-  if (!adminRequestAuthorized(req)) {
-    res.status(401).json({ error: "UNAUTHORIZED" });
-    return;
-  }
-  next();
+  void adminRequestAuthorized(req).then((ok) => {
+    if (!ok) {
+      res.status(401).json({ error: "UNAUTHORIZED" });
+      return;
+    }
+    next();
+  });
 }
 
 router.use(requireAdmin);

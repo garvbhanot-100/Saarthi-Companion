@@ -7,7 +7,8 @@ Real-time admin panel: logged-in users, profile, saved services, and chats from 
 1. Supabase project banao; copy `lib/db/.env.example` values into `artifacts/api-server/.env` (`DATABASE_URL`, `DIRECT_URL`, `SAARTHI_ADMIN_KEY`, `PORT=5000`).
 2. Prisma schema Supabase par push: `pnpm --filter @workspace/db run push`
 3. Optional (SSE live updates): run SQL in `lib/db/sql/saarthi_realtime_notify.sql` on your Postgres database.
-4. Copy `web/.env.example` → `web/.env` (`VITE_API_URL=http://localhost:5000`).
+4. Copy `web/.env.example` → `web/.env` (`VITE_API_URL`, `VITE_CLERK_PUBLISHABLE_KEY` — same Clerk app as mobile).
+5. On Render, set **`CLERK_SECRET_KEY`** (Clerk Dashboard → API Keys) so Google admin tokens validate on the API.
 5. In `artifacts/saarthi-ai/.env` set `EXPO_PUBLIC_API_URL=http://localhost:5000` (use your machine IP on a physical phone).
 
 ## Run

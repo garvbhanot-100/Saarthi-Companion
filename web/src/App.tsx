@@ -1,3 +1,4 @@
+import { useAuth, useClerk, useUser } from "@clerk/clerk-react";
 import {
   type ReactNode,
   useCallback,
@@ -5,6 +6,8 @@ import {
   useMemo,
   useState,
 } from "react";
+import { AdminSignIn } from "./AdminSignIn";
+import { ClerkSignOut } from "./ClerkSignOut";
 import {
   DEFAULT_ADMIN_EMAIL,
   fetchUserDetail,
@@ -14,6 +17,7 @@ import {
   type AdminUserRow,
   type UserDetail,
 } from "./api";
+import { isAllowedAdminEmail, isClerkAdminEnabled } from "./clerkConfig";
 
 const STORAGE_KEY = "saarthi-admin-session";
 
@@ -35,22 +39,58 @@ function initials(name: string, email: string) {
   return src.slice(0, 2).toUpperCase();
 }
 
+function ClerkSessionBridge({
+  onClerkCreds,
+  onError,
+}: {
+  onClerkCreds: (creds: AdminCredentials | null) => void;
+  onError: (message: string) => void;
+}) {
+  const { isLoaded, isSignedIn, getToken } = useAuth();
+  const { user } = useUser();
+  const { signOut } = useClerk();
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (!isSignedIn || !user) {
+      onClerkCreds(null);
+      return;
+    }
+    const email =
+      user.primaryEmailAddress?.emailAddress?.trim().toLowerCase() ?? "";
+    if (!email || !isAllowedAdminEmail(email)) {
+      void signOut();
+      onClerkCreds(null);
+      onError(
+        "This Google account is not authorized for admin. Use an approved admin email.",
+      );
+      return;
+    }
+    onClerkCreds({ email, getClerkToken: () => getToken() });
+    onError("");
+  }, [isLoaded, isSignedIn, user, getToken, signOut, onClerkCreds, onError]);
+
+  return null;
+}
+
 function loadStoredCreds(): AdminCredentials | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as AdminCredentials;
     if (!parsed.email || !parsed.password) return null;
-    return parsed;
+    return { email: parsed.email, password: parsed.password };
   } catch {
     return null;
   }
 }
 
 export default function App() {
-  const [adminCreds, setAdminCreds] = useState<AdminCredentials | null>(() =>
-    loadStoredCreds(),
+  const [clerkCreds, setClerkCreds] = useState<AdminCredentials | null>(null);
+  const [passwordCreds, setPasswordCreds] = useState<AdminCredentials | null>(
+    () => (isClerkAdminEnabled ? null : loadStoredCreds()),
   );
+  const adminCreds = clerkCreds ?? passwordCreds;
   const [draftEmail, setDraftEmail] = useState(
     () => loadStoredCreds()?.email ?? DEFAULT_ADMIN_EMAIL,
   );
@@ -67,7 +107,7 @@ export default function App() {
     if (!email || !password) return;
     const creds = { email, password };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(creds));
-    setAdminCreds(creds);
+    setPasswordCreds(creds);
     setError(null);
   }, [draftEmail, draftPassword]);
 
@@ -120,8 +160,24 @@ export default function App() {
     return { total: users.length, logins, messages };
   }, [users]);
 
+  const signOutAll = useCallback(() => {
+    localStorage.removeItem(STORAGE_KEY);
+    setClerkCreds(null);
+    setPasswordCreds(null);
+    setDraftEmail(DEFAULT_ADMIN_EMAIL);
+    setDraftPassword("");
+    setUsers([]);
+    setDetail(null);
+    setError(null);
+    setConnected(false);
+  }, []);
+
   if (!adminCreds) {
     return (
+      <>
+        {isClerkAdminEnabled ? (
+          <ClerkSessionBridge onClerkCreds={setClerkCreds} onError={setError} />
+        ) : null}
       <div className="min-h-screen flex items-center justify-center p-6">
         <div className="w-full max-w-md relative">
           <div className="absolute -inset-px rounded-3xl bg-gradient-to-br from-emerald-500/40 via-sky-500/20 to-violet-500/30 blur-sm" />
@@ -130,10 +186,24 @@ export default function App() {
             <h1 className="text-2xl font-semibold text-white mb-2 tracking-tight">
               Sartva Admin
             </h1>
-            <p className="text-slate-400 text-sm mb-8 leading-relaxed">
+            <p className="text-slate-400 text-sm mb-6 leading-relaxed">
               Sign in to view users, profiles, saved services, and chats — all
               synced in real time from the API.
             </p>
+
+            {isClerkAdminEnabled ? (
+              <>
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-500 mb-3">
+                  Continue with Google
+                </p>
+                <AdminSignIn />
+                <hr className="border-slate-700/60 my-6" />
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-500 mb-3">
+                  Or admin password
+                </p>
+              </>
+            ) : null}
+
             <label className="block text-sm font-medium text-slate-300 mb-2">
               Admin email
             </label>
@@ -167,10 +237,15 @@ export default function App() {
           </Panel>
         </div>
       </div>
+      </>
     );
   }
 
   return (
+  <>
+    {isClerkAdminEnabled ? (
+      <ClerkSessionBridge onClerkCreds={setClerkCreds} onError={setError} />
+    ) : null}
     <div className="min-h-screen p-4 md:p-8 pb-12">
       <header className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4 mb-10">
         <div className="flex items-start gap-4">
@@ -187,20 +262,17 @@ export default function App() {
             </p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            localStorage.removeItem(STORAGE_KEY);
-            setAdminCreds(null);
-            setDraftEmail(DEFAULT_ADMIN_EMAIL);
-            setDraftPassword("");
-            setUsers([]);
-            setDetail(null);
-          }}
-          className="text-sm text-slate-300 hover:text-white border border-slate-600/80 hover:border-slate-500 rounded-xl px-4 py-2.5 bg-slate-900/40 backdrop-blur transition"
-        >
-          Sign out
-        </button>
+        {isClerkAdminEnabled && clerkCreds ? (
+          <ClerkSignOut onDone={signOutAll} />
+        ) : (
+          <button
+            type="button"
+            onClick={signOutAll}
+            className="text-sm text-slate-300 hover:text-white border border-slate-600/80 hover:border-slate-500 rounded-xl px-4 py-2.5 bg-slate-900/40 backdrop-blur transition"
+          >
+            Sign out
+          </button>
+        )}
       </header>
 
       {error && (
@@ -369,6 +441,7 @@ export default function App() {
         </section>
       </div>
     </div>
+  </>
   );
 }
 

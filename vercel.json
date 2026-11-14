@@ -6,7 +6,8 @@
   "framework": null,
   "build": {
     "env": {
-      "VITE_API_URL": "https://saarthi-companion.onrender.com"
+      "VITE_API_URL": "https://saarthi-companion.onrender.com",
+      "VITE_CLERK_PUBLISHABLE_KEY": "pk_test_cGVyZmVjdC1mbHktNTcxOC5jbGVyay5hY2NvdW50cy5kZXYk"
     }
   },
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]

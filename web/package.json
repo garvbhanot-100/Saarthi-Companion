@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@clerk/clerk-react": "^5.31.0",
     "react": "catalog:",
     "react-dom": "catalog:"
   },
