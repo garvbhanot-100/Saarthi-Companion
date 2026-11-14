@@ -1,12 +1,21 @@
 import type { Request } from "express";
 
-const DEFAULT_ADMIN_EMAIL = "aaniya1985@gmail.com";
+const DEFAULT_ADMIN_EMAILS = [
+  "aaniya1985@gmail.com",
+  "garvbhanot990@gmail.com",
+];
 
-export function getConfiguredAdminEmail() {
-  return (
-    process.env.SAARTHI_ADMIN_EMAIL?.trim().toLowerCase() ||
-    DEFAULT_ADMIN_EMAIL
-  );
+function parseAdminEmails(raw: string): string[] {
+  return raw
+    .split(",")
+    .map((part) => part.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export function getConfiguredAdminEmails(): string[] {
+  const fromEnv = process.env.SAARTHI_ADMIN_EMAIL?.trim();
+  if (fromEnv) return parseAdminEmails(fromEnv);
+  return [...DEFAULT_ADMIN_EMAILS];
 }
 
 function normalizeEmail(value: string) {
@@ -22,7 +31,7 @@ export function getAdminSecretFromEnv() {
 }
 
 export function adminRequestAuthorized(req: Request): boolean {
-  const expectedEmail = getConfiguredAdminEmail();
+  const allowedEmails = getConfiguredAdminEmails();
   const expectedSecret = getAdminSecretFromEnv();
   if (!expectedSecret) return false;
 
@@ -45,6 +54,6 @@ export function adminRequestAuthorized(req: Request): boolean {
   const email = normalizeEmail(headerEmail || queryEmail);
   const secret = (headerSecret || querySecret).trim();
 
-  if (email !== expectedEmail) return false;
+  if (!allowedEmails.includes(email)) return false;
   return secret === expectedSecret;
 }

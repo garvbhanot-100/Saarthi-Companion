@@ -245,6 +245,8 @@ const english = {
     "Google login failed. No access token received.",
   profileAuthGoogleEmailMissing: "Google did not return an email address.",
   profileAuthGoogleLoginFailed: "Google login failed. Please try again.",
+  profileAuthGoogleEmailNotAllowed:
+    "Google sign-in is limited to approved accounts only. Use email and password, or sign in with an authorized Google account.",
   profileAuthContinueClerkSignIn: "Sign in with Clerk",
   profileAuthContinueClerkSignUp: "Sign up with Clerk",
   profileAuthClerkFailed: "Clerk sign-in failed. Please try again.",
@@ -801,6 +803,7 @@ export const profileTranslationKeys: TranslationKey[] = [
   "profileAuthGoogleTokenMissing",
   "profileAuthGoogleEmailMissing",
   "profileAuthGoogleLoginFailed",
+  "profileAuthGoogleEmailNotAllowed",
   "profileAuthContinueClerkSignIn",
   "profileAuthContinueClerkSignUp",
   "profileAuthClerkFailed",

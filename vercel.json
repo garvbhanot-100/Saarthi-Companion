@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "pnpm install",
+  "buildCommand": "pnpm --filter @workspace/saarthi-admin-web run build",
+  "outputDirectory": "web/dist",
+  "framework": null,
+  "build": {
+    "env": {
+      "VITE_API_URL": "https://saarthi-companion.onrender.com"
+    }
+  },
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}

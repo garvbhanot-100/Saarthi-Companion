@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { prisma, type Prisma } from "@workspace/db";
+import { isGoogleAuthEmailAllowed } from "./googleAuthAllowlist";
 
 const SESSION_DAYS = 30;
 
@@ -133,6 +134,13 @@ export async function loadUserState(userId: string): Promise<UserStateDto | null
   return mapUserState(user);
 }
 
+function assertGoogleAuthEmailAllowed(email: string, password?: string) {
+  if (password) return;
+  if (!isGoogleAuthEmailAllowed(email)) {
+    throw new Error("GOOGLE_EMAIL_NOT_ALLOWED");
+  }
+}
+
 export async function signUpUser(
   profile: UserProfileDto,
   password?: string,
@@ -142,6 +150,7 @@ export async function signUpUser(
   if (!name || !email.includes("@")) {
     throw new Error("INVALID_PROFILE");
   }
+  assertGoogleAuthEmailAllowed(email, password);
 
   const existing = await prisma.saarthiUser.findUnique({ where: { email } });
   if (existing) {
@@ -181,6 +190,7 @@ export async function loginUser(
   let user = await prisma.saarthiUser.findUnique({ where: { email } });
 
   if (profile) {
+    assertGoogleAuthEmailAllowed(email, password);
     const name = profile.name.trim() || user?.name || "";
     if (!user) {
       user = await prisma.saarthiUser.create({

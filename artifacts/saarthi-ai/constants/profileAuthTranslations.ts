@@ -46,6 +46,8 @@ export const profileAuthTranslations: Record<
       "Google login failed. No access token received.",
     profileAuthGoogleEmailMissing: "Google did not return an email address.",
     profileAuthGoogleLoginFailed: "Google login failed. Please try again.",
+    profileAuthGoogleEmailNotAllowed:
+      "Google sign-in is limited to approved accounts only. Use email and password, or sign in with an authorized Google account.",
   },
   as: {
     profileAuthClose: "ছাইন-ইন বন্ধ কৰক",

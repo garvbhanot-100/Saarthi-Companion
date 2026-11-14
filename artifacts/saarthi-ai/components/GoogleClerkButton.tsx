@@ -6,6 +6,7 @@ import { StyleSheet, Text, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 
 import { MotionPressable } from "@/components/Motion";
+import { isGoogleSignupEmailAllowed } from "@/constants/googleAllowedEmails";
 import { useLanguage } from "@/context/LanguagesContext";
 import { useSaarthi } from "@/context/SaarthiContext";
 import { useColors } from "@/hooks/useColors";
@@ -122,6 +123,13 @@ export function GoogleClerkButton({
         return;
       }
 
+      const normalizedEmail = emailAddress.trim().toLowerCase();
+      if (!isGoogleSignupEmailAllowed(normalizedEmail)) {
+        await clerk.signOut().catch(() => undefined);
+        onError(t("profileAuthGoogleEmailNotAllowed"));
+        return;
+      }
+
       const profile = {
         name:
           clerkUser?.fullName?.trim() ||
@@ -131,13 +139,41 @@ export function GoogleClerkButton({
             .trim() ||
           clerkSignUp?.firstName?.trim() ||
           t("profileAuthDefaultName"),
-        email: emailAddress.trim().toLowerCase(),
+        email: normalizedEmail,
       };
 
       if (mode === "login") {
-        await logIn(profile.email, undefined, profile);
+        try {
+          const ok = await logIn(profile.email, undefined, profile);
+          if (!ok) {
+            onError(t("profileAuthGoogleLoginFailed"));
+            return;
+          }
+        } catch (loginError) {
+          await clerk.signOut().catch(() => undefined);
+          if (
+            loginError instanceof Error &&
+            loginError.message === "GOOGLE_EMAIL_NOT_ALLOWED"
+          ) {
+            onError(t("profileAuthGoogleEmailNotAllowed"));
+            return;
+          }
+          throw loginError;
+        }
       } else {
-        await signUp(profile);
+        try {
+          await signUp(profile);
+        } catch (signUpError) {
+          await clerk.signOut().catch(() => undefined);
+          if (
+            signUpError instanceof Error &&
+            signUpError.message === "GOOGLE_EMAIL_NOT_ALLOWED"
+          ) {
+            onError(t("profileAuthGoogleEmailNotAllowed"));
+            return;
+          }
+          throw signUpError;
+        }
       }
       onSuccess();
     } catch (googleError) {

@@ -20,4 +20,19 @@ pnpm --filter @workspace/saarthi-ai run dev
 
 Use **pnpm** from the repo root (not `npm` in `web/` — workspace linking breaks otherwise).
 
-Admin login: **aaniya1985@gmail.com** + password from `SAARTHI_ADMIN_PASSWORD` in `artifacts/api-server/.env`.
+Admin login: **aaniya1985@gmail.com** or **garvbhanot990@gmail.com**, plus password from `SAARTHI_ADMIN_PASSWORD` in `artifacts/api-server/.env`.
+
+## Deploy on Vercel (admin panel)
+
+The API stays on Render (`https://saarthi-companion.onrender.com`). Vercel serves only the Vite admin UI.
+
+1. Import the GitHub repo in [Vercel](https://vercel.com/new) (root directory: repo root; `vercel.json` sets build/output).
+2. Add environment variable **`VITE_API_URL`** = `https://saarthi-companion.onrender.com` (Production + Preview).
+3. Deploy, or from the repo root:
+
+```bash
+vercel env add VITE_API_URL production   # paste Render API URL
+vercel --prod
+```
+
+`pnpm install` and `pnpm --filter @workspace/saarthi-admin-web run build` run on Vercel automatically.
