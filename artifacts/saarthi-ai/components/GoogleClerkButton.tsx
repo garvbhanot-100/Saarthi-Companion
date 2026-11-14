@@ -6,7 +6,6 @@ import { StyleSheet, Text, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 
 import { MotionPressable } from "@/components/Motion";
-import { isGoogleSignupEmailAllowed } from "@/constants/googleAllowedEmails";
 import { useLanguage } from "@/context/LanguagesContext";
 import { useSaarthi } from "@/context/SaarthiContext";
 import { useColors } from "@/hooks/useColors";
@@ -56,6 +55,7 @@ type Props = {
   onBusyChange: (busy: boolean) => void;
   onError: (message: string) => void;
   onSuccess: () => void;
+  variant?: "default" | "hero";
 };
 
 export function GoogleClerkButton({
@@ -64,6 +64,7 @@ export function GoogleClerkButton({
   onBusyChange,
   onError,
   onSuccess,
+  variant = "default",
 }: Props) {
   const c = useColors();
   const { t } = useLanguage();
@@ -100,9 +101,7 @@ export function GoogleClerkButton({
       }
 
       if (!createdSessionId || !setActive) {
-        onError(
-          `${t("profileAuthGoogleLoginFailed")} Use email + password, or allowlist: ${redirectUrl}`,
-        );
+        onError(t("profileAuthGoogleLoginFailed"));
         return;
       }
 
@@ -123,13 +122,6 @@ export function GoogleClerkButton({
         return;
       }
 
-      const normalizedEmail = emailAddress.trim().toLowerCase();
-      if (!isGoogleSignupEmailAllowed(normalizedEmail)) {
-        await clerk.signOut().catch(() => undefined);
-        onError(t("profileAuthGoogleEmailNotAllowed"));
-        return;
-      }
-
       const profile = {
         name:
           clerkUser?.fullName?.trim() ||
@@ -139,41 +131,17 @@ export function GoogleClerkButton({
             .trim() ||
           clerkSignUp?.firstName?.trim() ||
           t("profileAuthDefaultName"),
-        email: normalizedEmail,
+        email: emailAddress.trim().toLowerCase(),
       };
 
       if (mode === "login") {
-        try {
-          const ok = await logIn(profile.email, undefined, profile);
-          if (!ok) {
-            onError(t("profileAuthGoogleLoginFailed"));
-            return;
-          }
-        } catch (loginError) {
-          await clerk.signOut().catch(() => undefined);
-          if (
-            loginError instanceof Error &&
-            loginError.message === "GOOGLE_EMAIL_NOT_ALLOWED"
-          ) {
-            onError(t("profileAuthGoogleEmailNotAllowed"));
-            return;
-          }
-          throw loginError;
+        const ok = await logIn(profile.email, undefined, profile);
+        if (!ok) {
+          onError(t("profileAuthGoogleLoginFailed"));
+          return;
         }
       } else {
-        try {
-          await signUp(profile);
-        } catch (signUpError) {
-          await clerk.signOut().catch(() => undefined);
-          if (
-            signUpError instanceof Error &&
-            signUpError.message === "GOOGLE_EMAIL_NOT_ALLOWED"
-          ) {
-            onError(t("profileAuthGoogleEmailNotAllowed"));
-            return;
-          }
-          throw signUpError;
-        }
+        await signUp(profile);
       }
       onSuccess();
     } catch (googleError) {
@@ -191,9 +159,7 @@ export function GoogleClerkButton({
         googleError instanceof Error && googleError.message.trim()
           ? googleError.message.trim()
           : t("profileAuthGoogleLoginFailed");
-      onError(
-        `${detail}. Tip: create a local profile with email + password.`,
-      );
+      onError(detail);
     } finally {
       setLocalBusy(false);
       onBusyChange(false);
@@ -210,14 +176,21 @@ export function GoogleClerkButton({
         onPress={() => void continueWithGoogle()}
         style={({ pressed }) => [
           styles.googleBtn,
+          variant === "hero" && styles.googleBtnHero,
           {
-            borderColor: c.border,
+            borderColor: variant === "hero" ? "rgba(16, 24, 40, 0.08)" : c.border,
             opacity: disabled ? 0.7 : pressed ? 0.94 : 1,
           },
         ]}
       >
-        <GoogleIcon size={18} />
-        <Text style={styles.googleBtnText} numberOfLines={1}>
+        <GoogleIcon size={variant === "hero" ? 22 : 18} />
+        <Text
+          style={[
+            styles.googleBtnText,
+            variant === "hero" && styles.googleBtnTextHero,
+          ]}
+          numberOfLines={1}
+        >
           {disabled ? t("profileAuthWaiting") : t("profileAuthContinueGoogle")}
         </Text>
       </MotionPressable>
@@ -237,10 +210,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     backgroundColor: "#fff",
   },
+  googleBtnHero: {
+    minHeight: 58,
+    borderRadius: 18,
+    gap: 12,
+    paddingHorizontal: 20,
+    shadowColor: "#0f172a",
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
   googleBtnText: {
     fontFamily: "Inter_600SemiBold",
     fontSize: 14,
     color: "#1f1f1f",
     flexShrink: 1,
+  },
+  googleBtnTextHero: {
+    fontSize: 16,
   },
 });

@@ -6,7 +6,7 @@ export const profileAuthTranslations: Record<
 > = {
   en: {
     profileAuthClose: "Close sign-in",
-    profileAuthWelcome: "WELCOME TO SAARTHI",
+    profileAuthWelcome: "WELCOME TO SARTVA",
     profileAuthWelcomeBack: "WELCOME BACK",
     profileAuthSignupTitle: "Let’s make government simpler.",
     profileAuthLoginTitle: "Continue where you left off.",
@@ -46,8 +46,15 @@ export const profileAuthTranslations: Record<
       "Google login failed. No access token received.",
     profileAuthGoogleEmailMissing: "Google did not return an email address.",
     profileAuthGoogleLoginFailed: "Google login failed. Please try again.",
-    profileAuthGoogleEmailNotAllowed:
-      "Google sign-in is limited to approved accounts only. Use email and password, or sign in with an authorized Google account.",
+    profileAuthSignupGoogleOnly:
+      "Create your account with Google — it’s quick, secure, and saves your profile to the cloud.",
+    profileAuthClerkRequiredForSignup:
+      "Google sign-up needs Clerk configured (EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY).",
+    profileAuthBenefitSaved: "Bookmark government services",
+    profileAuthBenefitChats: "Chats saved across devices",
+    profileAuthBenefitSecure: "One-tap secure Google sign-in",
+    profileAuthLoginWithGoogleFirst: "Fastest — continue with Google",
+    profileAuthEmailSignIn: "Or sign in with email",
   },
   as: {
     profileAuthClose: "ছাইন-ইন বন্ধ কৰক",

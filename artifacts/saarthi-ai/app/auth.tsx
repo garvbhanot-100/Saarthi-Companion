@@ -9,9 +9,13 @@ import {
   Alert,
   Animated,
   Image,
+  LayoutAnimation,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
+  UIManager,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -19,15 +23,20 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { GoogleClerkButton } from "@/components/GoogleClerkButton";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { MotionPressable } from "@/components/Motion";
-import { AppInput } from "@/components/UI";
 import { isClerkConfigured } from "@/constants/clerk";
 import { useLanguage } from "@/context/LanguagesContext";
 import { APP_DISPLAY_NAME } from "@/constants/brand";
 import { useSaarthi } from "@/context/SaarthiContext";
 import { useColors } from "@/hooks/useColors";
 
-// Required so the browser auth session can return to the Expo app.
 WebBrowser.maybeCompleteAuthSession();
+
+if (
+  Platform.OS === "android" &&
+  UIManager.setLayoutAnimationEnabledExperimental
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 const enterApp = () => {
   router.replace("/(tabs)");
@@ -39,7 +48,7 @@ function RiseIn({
   style,
 }: React.PropsWithChildren<{ delay?: number; style?: object }>) {
   const opacity = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(12)).current;
+  const translateY = useRef(new Animated.Value(14)).current;
 
   useEffect(() => {
     let cancelled = false;
@@ -53,13 +62,13 @@ function RiseIn({
       Animated.parallel([
         Animated.timing(opacity, {
           toValue: 1,
-          duration: 380,
+          duration: 400,
           delay,
           useNativeDriver: true,
         }),
         Animated.timing(translateY, {
           toValue: 0,
-          duration: 380,
+          duration: 400,
           delay,
           useNativeDriver: true,
         }),
@@ -77,24 +86,87 @@ function RiseIn({
   );
 }
 
+function AuthBenefitRow({
+  icon,
+  label,
+}: {
+  icon: React.ComponentProps<typeof Feather>["name"];
+  label: string;
+}) {
+  const c = useColors();
+  return (
+    <View style={benefitStyles.row}>
+      <View style={[benefitStyles.iconWrap, { backgroundColor: c.primarySoft }]}>
+        <Feather name={icon} size={16} color={c.primary} />
+      </View>
+      <Text style={[benefitStyles.label, { color: c.foreground }]}>{label}</Text>
+    </View>
+  );
+}
+
+function AuthField({
+  label,
+  icon,
+  value,
+  onChangeText,
+  placeholder,
+  secureTextEntry,
+  keyboardType = "default",
+  autoCapitalize = "sentences",
+  trailing,
+}: {
+  label: string;
+  icon: React.ComponentProps<typeof Feather>["name"];
+  value: string;
+  onChangeText: (text: string) => void;
+  placeholder: string;
+  secureTextEntry?: boolean;
+  keyboardType?: React.ComponentProps<typeof TextInput>["keyboardType"];
+  autoCapitalize?: React.ComponentProps<typeof TextInput>["autoCapitalize"];
+  trailing?: React.ReactNode;
+}) {
+  const c = useColors();
+  return (
+    <View style={fieldStyles.wrap}>
+      <Text style={[fieldStyles.label, { color: c.mutedForeground }]}>{label}</Text>
+      <View
+        style={[
+          fieldStyles.box,
+          { backgroundColor: c.background, borderColor: c.input },
+        ]}
+      >
+        <Feather name={icon} size={18} color={c.mutedForeground} />
+        <TextInput
+          accessibilityLabel={label}
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={c.mutedForeground}
+          secureTextEntry={secureTextEntry}
+          keyboardType={keyboardType}
+          autoCapitalize={autoCapitalize}
+          autoCorrect={false}
+          style={[fieldStyles.input, { color: c.foreground }]}
+        />
+        {trailing}
+      </View>
+    </View>
+  );
+}
+
 export default function Auth() {
   const c = useColors();
   const i = useSafeAreaInsets();
   const { t, hydrated: languageHydrated } = useLanguage();
-  const {
-    hydrated: profileHydrated,
-    user,
-    signUp,
-    logIn,
-  } = useSaarthi();
+  const { hydrated: profileHydrated, user, logIn } = useSaarthi();
   const [mode, setMode] = useState<"login" | "signup">("signup");
-  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const authInProgress = useRef(false);
+  const switchAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     void WebBrowser.warmUpAsync();
@@ -109,29 +181,35 @@ export default function Auth() {
     }
   }, [profileHydrated, user]);
 
+  useEffect(() => {
+    Animated.spring(switchAnim, {
+      toValue: mode === "login" ? 0 : 1,
+      friction: 9,
+      tension: 80,
+      useNativeDriver: true,
+    }).start();
+  }, [mode, switchAnim]);
+
+  const setAuthMode = (next: "login" | "signup") => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setMode(next);
+    setError("");
+  };
+
   const submit = async () => {
     if (authInProgress.current) return;
     setError("");
     const formMode = mode;
+    if (formMode === "signup") {
+      setError(t("profileAuthSignupGoogleOnly"));
+      return;
+    }
     const normalizedEmail = email.trim().toLowerCase();
     if (!normalizedEmail.includes("@")) {
       setError(t("profileAuthInvalidEmail"));
       return;
     }
-    if (formMode === "signup") {
-      if (!name.trim()) {
-        setError(t("profileAuthNameRequired"));
-        return;
-      }
-      if (password.length < 8) {
-        setError(t("profileAuthPasswordMinimum"));
-        return;
-      }
-      if (password !== confirm) {
-        setError(t("profileAuthPasswordMismatch"));
-        return;
-      }
-    } else if (!password) {
+    if (!password) {
       setError(t("profileAuthPasswordRequired"));
       return;
     }
@@ -139,14 +217,10 @@ export default function Auth() {
     authInProgress.current = true;
     setBusy(true);
     try {
-      if (formMode === "signup") {
-        await signUp({ name, email: normalizedEmail }, password);
-      } else {
-        const loggedIn = await logIn(normalizedEmail, password);
-        if (!loggedIn) {
-          setError(t("profileAuthLocalProfileMissing"));
-          return;
-        }
+      const loggedIn = await logIn(normalizedEmail, password);
+      if (!loggedIn) {
+        setError(t("profileAuthLocalProfileMissing"));
+        return;
       }
       enterApp();
     } catch (submitError) {
@@ -170,41 +244,43 @@ export default function Auth() {
     );
   }
 
+  const indicatorTranslate = switchAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [4, 4 + (stylesMetrics.switchHalfWidth || 0)],
+  });
+
   return (
     <View style={[s.root, { backgroundColor: c.background }]}>
       <KeyboardAwareScrollViewCompat
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: i.bottom + 28 }}
-        bottomOffset={20}
+        contentContainerStyle={{ paddingBottom: i.bottom + 32 }}
+        bottomOffset={24}
         keyboardShouldPersistTaps="handled"
       >
         <LinearGradient
-          colors={[c.indigo, c.primary, c.background]}
-          locations={[0, 0.55, 1]}
-          style={[s.hero, { paddingTop: i.top + 10 }]}
+          colors={["#1e3a8a", c.indigo, c.primary]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[s.hero, { paddingTop: i.top + 16 }]}
         >
-          <View style={s.heroGlow} />
+          <View style={s.orbA} />
+          <View style={s.orbB} />
 
           <RiseIn>
-            <View style={s.topBar}>
-              <View style={s.brandRow}>
-                <Image
-                  source={require("../assets/images/images-2/Saarthi-AI Images.jpeg")}
-                  style={s.brandMark}
-                  resizeMode="cover"
-                />
+            <View style={s.brandGlass}>
+              <Image
+                source={require("../assets/images/images-2/Saarthi-AI Images.jpeg")}
+                style={s.brandMark}
+                resizeMode="cover"
+              />
+              <View style={s.brandCopy}>
                 <Text style={s.brandWord}>{APP_DISPLAY_NAME}</Text>
+                <Text style={s.brandTagline}>{t("profileAuthWelcome")}</Text>
               </View>
-
             </View>
           </RiseIn>
 
-          <RiseIn delay={80}>
-            <Text style={s.eyebrow}>
-              {mode === "signup"
-                ? t("profileAuthWelcome")
-                : t("profileAuthWelcomeBack")}
-            </Text>
+          <RiseIn delay={60}>
             <Text style={s.heroTitle}>
               {mode === "signup"
                 ? t("profileAuthSignupTitle")
@@ -216,31 +292,55 @@ export default function Auth() {
                 : t("profileAuthLoginDescription")}
             </Text>
           </RiseIn>
+
+          {mode === "signup" ? (
+            <RiseIn delay={120} style={s.benefitStrip}>
+              <AuthBenefitRow
+                icon="bookmark"
+                label={t("profileBenefitSaved")}
+              />
+              <AuthBenefitRow
+                icon="message-circle"
+                label={t("profileBenefitChats")}
+              />
+              <AuthBenefitRow
+                icon="globe"
+                label={t("profileBenefitLanguage")}
+              />
+            </RiseIn>
+          ) : null}
         </LinearGradient>
 
-        <RiseIn delay={140} style={s.sheetWrap}>
+        <RiseIn delay={160} style={s.sheetWrap}>
           <View
             style={[
               s.sheet,
-              { backgroundColor: c.card, borderColor: c.border },
+              {
+                backgroundColor: c.card,
+                borderColor: c.border,
+                shadowColor: c.foreground,
+              },
             ]}
           >
             <View style={[s.switcher, { backgroundColor: c.muted }]}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={t("profileAuthLogin")}
-                onPress={() => {
-                  setMode("login");
-                  setError("");
-                }}
+              <Animated.View
+                pointerEvents="none"
                 style={[
-                  s.switchItem,
-                  mode === "login" && {
+                  s.switchIndicator,
+                  {
                     backgroundColor: c.card,
                     borderColor: c.border,
-                    borderWidth: 1,
+                    transform: [{ translateX: indicatorTranslate }],
+                    width: stylesMetrics.switchHalfWidth,
                   },
                 ]}
+              />
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: mode === "login" }}
+                accessibilityLabel={t("profileAuthLogin")}
+                onPress={() => setAuthMode("login")}
+                style={s.switchItem}
               >
                 <Text
                   style={[
@@ -256,19 +356,10 @@ export default function Auth() {
               </Pressable>
               <Pressable
                 accessibilityRole="button"
+                accessibilityState={{ selected: mode === "signup" }}
                 accessibilityLabel={t("profileAuthCreateAccount")}
-                onPress={() => {
-                  setMode("signup");
-                  setError("");
-                }}
-                style={[
-                  s.switchItem,
-                  mode === "signup" && {
-                    backgroundColor: c.card,
-                    borderColor: c.border,
-                    borderWidth: 1,
-                  },
-                ]}
+                onPress={() => setAuthMode("signup")}
+                style={s.switchItem}
               >
                 <Text
                   style={[
@@ -284,129 +375,176 @@ export default function Auth() {
               </Pressable>
             </View>
 
-            {mode === "signup" && (
-              <AppInput
-                label={t("profileAuthFullName")}
-                accessibilityLabel={t("profileAuthFullName")}
-                value={name}
-                onChangeText={setName}
-                placeholder={t("profileAuthYourName")}
-              />
-            )}
-            <AppInput
-              label={t("profileAuthEmail")}
-              accessibilityLabel={t("profileAuthEmail")}
-              value={email}
-              onChangeText={setEmail}
-              placeholder={t("profileAuthEmailPlaceholder")}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-            <AppInput
-              label={t("profileAuthPassword")}
-              accessibilityLabel={t("profileAuthPassword")}
-              value={password}
-              onChangeText={setPassword}
-              placeholder={t("profileAuthPasswordPlaceholder")}
-              secureTextEntry
-            />
-            {mode === "signup" && (
-              <AppInput
-                label={t("profileAuthConfirmPassword")}
-                accessibilityLabel={t("profileAuthConfirmPassword")}
-                value={confirm}
-                onChangeText={setConfirm}
-                placeholder={t("profileAuthReenterPassword")}
-                secureTextEntry
-              />
-            )}
-
             {error ? (
               <View style={[s.errorBox, { backgroundColor: c.warningSoft }]}>
-                <Feather name="alert-circle" size={15} color={c.accent} />
+                <Feather name="alert-circle" size={16} color={c.accent} />
                 <Text style={[s.errorText, { color: c.foreground }]}>
                   {error}
                 </Text>
               </View>
             ) : null}
 
-            <MotionPressable
-              accessibilityRole="button"
-              accessibilityLabel={
-                busy
-                  ? t("profileAuthWaiting")
-                  : mode === "signup"
-                    ? t("profileAuthCreateLocalProfile")
-                    : t("profileAuthLogin")
-              }
-              accessibilityState={{ disabled: busy }}
-              disabled={busy}
-              onPress={submit}
-              style={({ pressed }) => [
-                s.primaryCta,
-                {
-                  backgroundColor: c.primary,
-                  opacity: busy ? 0.7 : pressed ? 0.9 : 1,
-                },
-              ]}
-            >
-              <Text style={[s.primaryCtaText, { color: c.primaryForeground }]}>
-                {busy
-                  ? t("profileAuthWaiting")
-                  : mode === "signup"
-                    ? t("profileAuthCreateLocalProfile")
-                    : t("profileAuthLogin")}
-              </Text>
-              {!busy && (
-                <Feather
-                  name="arrow-right"
-                  size={17}
-                  color={c.primaryForeground}
-                />
-              )}
-            </MotionPressable>
-
-            {isClerkConfigured ? (
-              <>
-                <View style={s.or}>
-                  <View style={[s.line, { backgroundColor: c.border }]} />
-                  <Text style={[s.orText, { color: c.mutedForeground }]}>
-                    {t("profileAuthOr")}
+            {mode === "signup" ? (
+              <View style={s.signupBody}>
+                {isClerkConfigured ? (
+                  <>
+                    <GoogleClerkButton
+                      mode="signup"
+                      busy={busy}
+                      onBusyChange={setBusy}
+                      onError={setError}
+                      onSuccess={enterApp}
+                      prominent
+                    />
+                    <Text
+                      style={[s.googleHint, { color: c.mutedForeground }]}
+                    >
+                      {t("profileAuthSignupGoogleOnly")}
+                    </Text>
+                  </>
+                ) : (
+                  <View
+                    style={[s.clerkWarn, { backgroundColor: c.warningSoft }]}
+                  >
+                    <Feather name="info" size={16} color={c.accent} />
+                    <Text style={[s.clerkWarnText, { color: c.foreground }]}>
+                      {t("profileAuthClerkRequiredForSignup")}
+                    </Text>
+                  </View>
+                )}
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => setAuthMode("login")}
+                  style={s.altModeLink}
+                >
+                  <Text style={[s.altModeText, { color: c.mutedForeground }]}>
+                    {t("profileAuthLoginDescription")}{" "}
+                    <Text style={{ color: c.primary, fontFamily: "Inter_700Bold" }}>
+                      {t("profileAuthLogin")}
+                    </Text>
                   </Text>
-                  <View style={[s.line, { backgroundColor: c.border }]} />
+                </Pressable>
+              </View>
+            ) : (
+              <View style={s.loginBody}>
+                {isClerkConfigured ? (
+                  <>
+                    <GoogleClerkButton
+                      mode="login"
+                      busy={busy}
+                      onBusyChange={setBusy}
+                      onError={setError}
+                      onSuccess={enterApp}
+                      prominent
+                    />
+                    <View style={s.or}>
+                      <View style={[s.line, { backgroundColor: c.border }]} />
+                      <Text style={[s.orText, { color: c.mutedForeground }]}>
+                        {t("profileAuthOr")}
+                      </Text>
+                      <View style={[s.line, { backgroundColor: c.border }]} />
+                    </View>
+                    <Text style={[s.sectionLabel, { color: c.mutedForeground }]}>
+                      {t("profileAuthEmailSignIn")}
+                    </Text>
+                  </>
+                ) : null}
+
+                <View
+                  style={[
+                    s.formCard,
+                    { backgroundColor: c.muted, borderColor: c.border },
+                  ]}
+                >
+                  <AuthField
+                    label={t("profileAuthEmail")}
+                    icon="mail"
+                    value={email}
+                    onChangeText={setEmail}
+                    placeholder={t("profileAuthEmailPlaceholder")}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                  />
+                  <AuthField
+                    label={t("profileAuthPassword")}
+                    icon="lock"
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder={t("profileAuthPasswordPlaceholder")}
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                    trailing={
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={
+                          showPassword
+                            ? t("profileAuthHidePassword")
+                            : t("profileAuthShowPassword")
+                        }
+                        hitSlop={10}
+                        onPress={() => setShowPassword((v) => !v)}
+                      >
+                        <Feather
+                          name={showPassword ? "eye-off" : "eye"}
+                          size={18}
+                          color={c.mutedForeground}
+                        />
+                      </Pressable>
+                    }
+                  />
                 </View>
 
-                <GoogleClerkButton
-                  mode={mode}
-                  busy={busy}
-                  onBusyChange={setBusy}
-                  onError={setError}
-                  onSuccess={enterApp}
-                />
-              </>
-            ) : null}
+                <MotionPressable
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    busy ? t("profileAuthWaiting") : t("profileAuthLogin")
+                  }
+                  accessibilityState={{ disabled: busy }}
+                  disabled={busy}
+                  onPress={submit}
+                  style={({ pressed }) => [
+                    s.primaryCta,
+                    {
+                      backgroundColor: c.primary,
+                      opacity: busy ? 0.7 : pressed ? 0.92 : 1,
+                    },
+                  ]}
+                >
+                  {busy ? (
+                    <ActivityIndicator color={c.primaryForeground} />
+                  ) : (
+                    <>
+                      <Text
+                        style={[s.primaryCtaText, { color: c.primaryForeground }]}
+                      >
+                        {t("profileAuthLogin")}
+                      </Text>
+                      <Feather
+                        name="arrow-right"
+                        size={18}
+                        color={c.primaryForeground}
+                      />
+                    </>
+                  )}
+                </MotionPressable>
 
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={
-                mode === "login"
-                  ? t("profileAuthForgotPassword")
-                  : t("profileAuthSecureAuthentication")
-              }
-              onPress={() =>
-                Alert.alert(
-                  t("profileAuthPasswordResetTitle"),
-                  t("profileAuthPasswordResetDescription"),
-                )
-              }
-              style={s.footerLink}
-            >
-              <Text style={[s.forgot, { color: c.primary }]}>
-                {mode === "login"
-                  ? t("profileAuthForgotPassword")
-                  : t("profileAuthSecureAuthentication")}
-              </Text>
-            </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={t("profileAuthForgotPassword")}
+                  onPress={() =>
+                    Alert.alert(
+                      t("profileAuthPasswordResetTitle"),
+                      t("profileAuthPasswordResetDescription"),
+                    )
+                  }
+                  style={s.footerLink}
+                >
+                  <Text style={[s.forgot, { color: c.primary }]}>
+                    {t("profileAuthForgotPassword")}
+                  </Text>
+                </Pressable>
+              </View>
+            )}
           </View>
         </RiseIn>
 
@@ -418,6 +556,63 @@ export default function Auth() {
   );
 }
 
+const stylesMetrics = {
+  switchHalfWidth: 0,
+};
+
+const SWITCHER_INNER = 4;
+
+const benefitStyles = StyleSheet.create({
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+    minWidth: 0,
+  },
+  iconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  label: {
+    flex: 1,
+    fontFamily: "Inter_500Medium",
+    fontSize: 11,
+    lineHeight: 15,
+  },
+});
+
+const fieldStyles = StyleSheet.create({
+  wrap: {
+    marginBottom: 14,
+  },
+  label: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+    letterSpacing: 0.3,
+    marginBottom: 6,
+    textTransform: "uppercase",
+  },
+  box: {
+    minHeight: 52,
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 14,
+  },
+  input: {
+    flex: 1,
+    fontFamily: "Inter_500Medium",
+    fontSize: 15,
+    paddingVertical: 12,
+  },
+});
+
 const s = StyleSheet.create({
   root: { flex: 1 },
   loading: {
@@ -426,110 +621,142 @@ const s = StyleSheet.create({
     justifyContent: "center",
   },
   hero: {
-    paddingHorizontal: 22,
-    paddingBottom: 42,
+    paddingHorizontal: 20,
+    paddingBottom: 48,
     overflow: "hidden",
   },
-  heroGlow: {
+  orbA: {
     position: "absolute",
-    width: 200,
-    height: 200,
-    borderRadius: 100,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    top: -60,
+    right: -70,
+  },
+  orbB: {
+    position: "absolute",
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    bottom: 20,
+    left: -40,
+  },
+  brandGlass: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    padding: 12,
+    borderRadius: 20,
     backgroundColor: "rgba(255,255,255,0.12)",
-    top: -36,
-    right: -40,
-  },
-  topBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  brandRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.22)",
+    alignSelf: "flex-start",
   },
   brandMark: {
-    width: 38,
-    height: 38,
-    borderRadius: 13,
+    width: 48,
+    height: 48,
+    borderRadius: 16,
     borderWidth: 1.5,
     borderColor: "rgba(255,255,255,0.35)",
   },
+  brandCopy: {
+    gap: 2,
+    paddingRight: 8,
+  },
   brandWord: {
     fontFamily: "Inter_700Bold",
-    fontSize: 20,
+    fontSize: 22,
     color: "#fff",
-    letterSpacing: -0.3,
+    letterSpacing: -0.4,
   },
-  brandAccent: {
+  brandTagline: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 9,
+    letterSpacing: 1.4,
     color: "rgba(255,255,255,0.72)",
   },
-  closeBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 13,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.14)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
-  },
-  eyebrow: {
-    marginTop: 28,
-    fontFamily: "Inter_700Bold",
-    fontSize: 10,
-    letterSpacing: 1.2,
-    color: "rgba(255,255,255,0.75)",
-  },
   heroTitle: {
-    marginTop: 10,
+    marginTop: 22,
     fontFamily: "Inter_700Bold",
-    fontSize: 30,
-    lineHeight: 36,
-    letterSpacing: -0.7,
+    fontSize: 26,
+    lineHeight: 32,
+    letterSpacing: -0.6,
     color: "#fff",
   },
   heroCaption: {
-    marginTop: 10,
+    marginTop: 8,
     fontFamily: "Inter_400Regular",
     fontSize: 14,
     lineHeight: 21,
-    color: "rgba(255,255,255,0.8)",
+    color: "rgba(255,255,255,0.84)",
     maxWidth: 340,
   },
+  benefitStrip: {
+    marginTop: 20,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    backgroundColor: "rgba(0,0,0,0.12)",
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
   sheetWrap: {
-    marginTop: -22,
-    paddingHorizontal: 18,
+    marginTop: -28,
+    paddingHorizontal: 16,
   },
   sheet: {
-    borderRadius: 24,
+    borderRadius: 28,
     borderWidth: 1,
-    padding: 18,
+    padding: 20,
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 6,
   },
   switcher: {
-    minHeight: 48,
-    borderRadius: 14,
-    padding: 4,
+    minHeight: 52,
+    borderRadius: 16,
+    padding: SWITCHER_INNER,
     flexDirection: "row",
-    marginBottom: 18,
+    marginBottom: 20,
+    position: "relative",
+  },
+  switchIndicator: {
+    position: "absolute",
+    top: SWITCHER_INNER,
+    bottom: SWITCHER_INNER,
+    left: 0,
+    borderRadius: 12,
+    borderWidth: 1,
+    shadowColor: "#0f172a",
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   switchItem: {
     flex: 1,
-    borderRadius: 11,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
+    minHeight: 44,
+    zIndex: 1,
   },
   switchText: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+    fontSize: 13,
   },
   errorBox: {
     flexDirection: "row",
     gap: 8,
     padding: 12,
     borderRadius: 14,
-    marginBottom: 12,
+    marginBottom: 14,
+    alignItems: "flex-start",
   },
   errorText: {
     fontFamily: "Inter_500Medium",
@@ -537,8 +764,72 @@ const s = StyleSheet.create({
     lineHeight: 17,
     flex: 1,
   },
+  signupBody: {
+    gap: 4,
+  },
+  loginBody: {
+    gap: 2,
+  },
+  googleHint: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: "center",
+    marginTop: 14,
+    paddingHorizontal: 4,
+  },
+  clerkWarn: {
+    flexDirection: "row",
+    gap: 10,
+    padding: 14,
+    borderRadius: 14,
+    alignItems: "flex-start",
+  },
+  clerkWarnText: {
+    flex: 1,
+    fontFamily: "Inter_500Medium",
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  altModeLink: {
+    marginTop: 18,
+    paddingVertical: 6,
+  },
+  altModeText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: "center",
+  },
+  sectionLabel: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    marginBottom: 10,
+    marginTop: 4,
+  },
+  formCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 14,
+    paddingBottom: 2,
+    marginBottom: 16,
+  },
+  or: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginVertical: 18,
+  },
+  line: { flex: 1, height: StyleSheet.hairlineWidth },
+  orText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+    letterSpacing: 0.8,
+  },
   primaryCta: {
-    minHeight: 54,
+    minHeight: 56,
     borderRadius: 16,
     flexDirection: "row",
     alignItems: "center",
@@ -548,51 +839,15 @@ const s = StyleSheet.create({
   },
   primaryCtaText: {
     fontFamily: "Inter_700Bold",
-    fontSize: 15,
-  },
-  or: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginVertical: 16,
-  },
-  line: { flex: 1, height: 1 },
-  orText: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 10,
-    letterSpacing: 0.6,
-  },
-  googleBtn: {
-    marginTop: 10,
-    width: "100%",
-    minHeight: 52,
-    borderRadius: 16,
-    borderWidth: 1,
-    backgroundColor: "#ffffff",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 12,
-    paddingHorizontal: 18,
-    shadowColor: "#12213e",
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
-  },
-  googleBtnText: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 15,
-    color: "#1f1f1f",
-    flexShrink: 1,
+    fontSize: 16,
   },
   footerLink: {
-    paddingTop: 14,
-    paddingBottom: 2,
+    paddingTop: 16,
+    paddingBottom: 4,
   },
   forgot: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 13,
     textAlign: "center",
   },
   disclosure: {
@@ -600,7 +855,17 @@ const s = StyleSheet.create({
     fontSize: 10,
     lineHeight: 15,
     textAlign: "center",
-    marginTop: 16,
+    marginTop: 18,
     marginHorizontal: 28,
+  },
+});
+
+// Estimate half width for segment indicator (sheet width ~ screen - 32 - 40 padding)
+// Updated on layout via onLayout on switcher - we'll use percentage instead
+Object.defineProperty(stylesMetrics, "switchHalfWidth", {
+  get() {
+    const { Dimensions } = require("react-native");
+    const sheetWidth = Dimensions.get("window").width - 32 - 40;
+    return (sheetWidth - SWITCHER_INNER * 2) / 2;
   },
 });

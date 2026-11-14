@@ -245,12 +245,22 @@ const english = {
     "Google login failed. No access token received.",
   profileAuthGoogleEmailMissing: "Google did not return an email address.",
   profileAuthGoogleLoginFailed: "Google login failed. Please try again.",
-  profileAuthGoogleEmailNotAllowed:
-    "Google sign-in is limited to approved accounts only. Use email and password, or sign in with an authorized Google account.",
+  profileAuthSignupGoogleOnly:
+    "Create your account with Google — it’s quick, secure, and saves your profile to the cloud.",
+  profileAuthClerkRequiredForSignup:
+    "Google sign-up needs Clerk configured (EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY).",
+  profileAuthBenefitSaved: "Bookmark government services",
+  profileAuthBenefitChats: "Chats saved across devices",
+  profileAuthBenefitSecure: "One-tap secure Google sign-in",
+  profileAuthLoginWithGoogleFirst: "Fastest — continue with Google",
+  profileAuthEmailSignIn: "Or sign in with email",
   profileAuthContinueClerkSignIn: "Sign in with Clerk",
   profileAuthContinueClerkSignUp: "Sign up with Clerk",
   profileAuthClerkFailed: "Clerk sign-in failed. Please try again.",
   profileAuthDefaultName: "Sartva User",
+  profileAuthShowPassword: "Show password",
+  profileAuthHidePassword: "Hide password",
+  profileAuthEmailSignIn: "Sign in with email",
 
   serviceNotFound: "Service not found",
   goBack: "Go back",
@@ -803,7 +813,13 @@ export const profileTranslationKeys: TranslationKey[] = [
   "profileAuthGoogleTokenMissing",
   "profileAuthGoogleEmailMissing",
   "profileAuthGoogleLoginFailed",
-  "profileAuthGoogleEmailNotAllowed",
+  "profileAuthSignupGoogleOnly",
+  "profileAuthClerkRequiredForSignup",
+  "profileAuthBenefitSaved",
+  "profileAuthBenefitChats",
+  "profileAuthBenefitSecure",
+  "profileAuthLoginWithGoogleFirst",
+  "profileAuthEmailSignIn",
   "profileAuthContinueClerkSignIn",
   "profileAuthContinueClerkSignUp",
   "profileAuthClerkFailed",
@@ -811,6 +827,9 @@ export const profileTranslationKeys: TranslationKey[] = [
   "profileClerkManageAccount",
   "profileClerkSignOut",
   "profileAuthDefaultName",
+  "profileAuthShowPassword",
+  "profileAuthHidePassword",
+  "profileAuthEmailSignIn",
 ];
 
 export const searchTranslationKeys: TranslationKey[] = [

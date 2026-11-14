@@ -180,12 +180,6 @@ export function SaarthiProvider({ children }: { children: ReactNode }) {
         return true;
       } catch (error) {
         console.error("Login failed:", error);
-        if (
-          error instanceof Error &&
-          error.message === "GOOGLE_EMAIL_NOT_ALLOWED"
-        ) {
-          throw error;
-        }
         return false;
       }
     },

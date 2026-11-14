@@ -68,34 +68,21 @@ router.post("/saarthi/signup", async (req, res) => {
       res.status(409).json({ error: "EMAIL_TAKEN" });
       return;
     }
-    if (message === "GOOGLE_EMAIL_NOT_ALLOWED") {
-      res.status(403).json({ error: "GOOGLE_EMAIL_NOT_ALLOWED" });
-      return;
-    }
     res.status(400).json({ error: message });
   }
 });
 
 router.post("/saarthi/login", async (req, res) => {
-  try {
-    const email = typeof req.body?.email === "string" ? req.body.email : "";
-    const password =
-      typeof req.body?.password === "string" ? req.body.password : undefined;
-    const profile = req.body?.profile as UserProfileDto | undefined;
-    const result = await loginUser(email, password, profile);
-    if (!result) {
-      res.status(401).json({ error: "INVALID_CREDENTIALS" });
-      return;
-    }
-    res.json(result);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "UNKNOWN";
-    if (message === "GOOGLE_EMAIL_NOT_ALLOWED") {
-      res.status(403).json({ error: "GOOGLE_EMAIL_NOT_ALLOWED" });
-      return;
-    }
-    res.status(400).json({ error: message });
+  const email = typeof req.body?.email === "string" ? req.body.email : "";
+  const password =
+    typeof req.body?.password === "string" ? req.body.password : undefined;
+  const profile = req.body?.profile as UserProfileDto | undefined;
+  const result = await loginUser(email, password, profile);
+  if (!result) {
+    res.status(401).json({ error: "INVALID_CREDENTIALS" });
+    return;
   }
+  res.json(result);
 });
 
 router.post("/saarthi/logout", async (req, res) => {
