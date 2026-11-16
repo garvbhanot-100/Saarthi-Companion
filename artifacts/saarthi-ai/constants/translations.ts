@@ -224,8 +224,13 @@ const english = {
   profileAuthConfirmPassword: "Confirm password",
   profileAuthReenterPassword: "Re-enter password",
   profileAuthWaiting: "Please wait…",
+  profileAuthClerkLoading: "Getting ready…",
   profileAuthCreateLocalProfile: "Create local profile",
   profileAuthOr: "OR",
+  profileAuthOrContinueWith: "or continue with",
+  profileAuthScreenLogin: "Log in",
+  profileAuthScreenSignup: "Sign up",
+  profileAuthCreatePassword: "Create a password",
   profileAuthContinueGoogle: "Continue with Google",
   profileAuthPasswordResetTitle: "Password reset setup",
   profileAuthPasswordResetDescription:
@@ -248,7 +253,7 @@ const english = {
   profileAuthSignupGoogleOnly:
     "Create your account with Google — it’s quick, secure, and saves your profile to the cloud.",
   profileAuthClerkRequiredForSignup:
-    "Google sign-up needs Clerk configured (EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY).",
+    "Clerk is not configured. Add EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY and restart the app.",
   profileAuthBenefitSaved: "Bookmark government services",
   profileAuthBenefitChats: "Chats saved across devices",
   profileAuthBenefitSecure: "One-tap secure Google sign-in",
@@ -257,10 +262,25 @@ const english = {
   profileAuthContinueClerkSignIn: "Sign in with Clerk",
   profileAuthContinueClerkSignUp: "Sign up with Clerk",
   profileAuthClerkFailed: "Clerk sign-in failed. Please try again.",
+  profileAuthClerkVerifyEmail:
+    "Check your email for Clerk’s verification link, then log in.",
   profileAuthDefaultName: "Sartva User",
   profileAuthShowPassword: "Show password",
   profileAuthHidePassword: "Hide password",
   profileAuthEmailSignIn: "Sign in with email",
+  profileAuthNoAccount: "Don't have an account?",
+  profileAuthContinueAsGuest: "Continue as guest",
+  profileAuthGuestName: "Guest",
+  profileAuthGuestHint: "Preview the app on this device — no sign-in.",
+  profileAuthHaveAccount: "Already have an account?",
+  profileAuthEmailTaken:
+    "This email is already registered. Try logging in instead.",
+  profileAuthInvalidCredentials:
+    "Incorrect email or password. Try again or use Google.",
+  profileAuthApiRequired:
+    "Server connect nahi ho paya. PC par API start karein aur phone same Wi‑Fi par rakhein.",
+  profileAuthServerUnreachable:
+    "Sartva server tak pahunch nahi paye. API chal raha hai? Internet / Wi‑Fi check karein.",
 
   serviceNotFound: "Service not found",
   goBack: "Go back",
@@ -730,6 +750,9 @@ export const translations: Record<LanguageCode, TranslationDictionary> = {
 
 export type TranslationKey = keyof typeof english;
 
+/** Canonical English strings (fallback when a locale file omits a key). */
+export const englishStrings = english;
+
 export const profileTranslationKeys: TranslationKey[] = [
   "saved",
   "createAccount",
@@ -796,8 +819,13 @@ export const profileTranslationKeys: TranslationKey[] = [
   "profileAuthConfirmPassword",
   "profileAuthReenterPassword",
   "profileAuthWaiting",
+  "profileAuthClerkLoading",
   "profileAuthCreateLocalProfile",
   "profileAuthOr",
+  "profileAuthOrContinueWith",
+  "profileAuthScreenLogin",
+  "profileAuthScreenSignup",
+  "profileAuthCreatePassword",
   "profileAuthContinueGoogle",
   "profileAuthPasswordResetTitle",
   "profileAuthPasswordResetDescription",
@@ -823,6 +851,7 @@ export const profileTranslationKeys: TranslationKey[] = [
   "profileAuthContinueClerkSignIn",
   "profileAuthContinueClerkSignUp",
   "profileAuthClerkFailed",
+  "profileAuthClerkVerifyEmail",
   "profileClerkAccount",
   "profileClerkManageAccount",
   "profileClerkSignOut",
@@ -830,6 +859,15 @@ export const profileTranslationKeys: TranslationKey[] = [
   "profileAuthShowPassword",
   "profileAuthHidePassword",
   "profileAuthEmailSignIn",
+  "profileAuthNoAccount",
+  "profileAuthContinueAsGuest",
+  "profileAuthGuestName",
+  "profileAuthGuestHint",
+  "profileAuthHaveAccount",
+  "profileAuthEmailTaken",
+  "profileAuthInvalidCredentials",
+  "profileAuthApiRequired",
+  "profileAuthServerUnreachable",
 ];
 
 export const searchTranslationKeys: TranslationKey[] = [

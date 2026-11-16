@@ -9,6 +9,7 @@ import React, {
 } from "react";
 
 import {
+  englishStrings,
   getHomeTranslation,
   askSavedTranslationKeys,
   homeSearchKeys,
@@ -18,6 +19,7 @@ import {
   type TranslationKey,
 } from "@/constants/translations";
 import { askSavedTranslations } from "@/constants/askSavedTranslations";
+import { profileAuthTranslations } from "@/constants/profileAuthTranslations";
 import { profileTranslations } from "@/constants/profileTranslations";
 import { searchTranslations } from "@/constants/searchTranslations";
 import { serviceTranslationUnavailable } from "@/constants/serviceTranslationUnavailable";
@@ -116,7 +118,10 @@ const t = (key: TranslationKey): string => {
     : isHomeText
       ? getHomeTranslation(language, key)
       : isProfileText
-        ? profileTranslations[language]?.[key]
+        ? profileTranslations[language]?.[key] ??
+          profileTranslations.en?.[key] ??
+          profileAuthTranslations.en?.[key] ??
+          englishStrings[key]
         : isSearchText
           ? key === "serviceTranslationUnavailable"
             ? serviceTranslationUnavailable[language]

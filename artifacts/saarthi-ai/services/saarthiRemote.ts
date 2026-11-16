@@ -11,9 +11,7 @@ const SECURE_SESSION_KEY = "saarthi-session-token";
 function apiBase() {
   const url = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, "");
   if (!url) {
-    throw new Error(
-      "EXPO_PUBLIC_API_URL is not set. Point it at your API server (e.g. http://localhost:5000).",
-    );
+    throw new Error("API_NOT_CONFIGURED");
   }
   return `${url}/api`;
 }
@@ -55,7 +53,18 @@ async function apiFetch(
   if (sessionToken) {
     headers.set("Authorization", `Bearer ${sessionToken}`);
   }
-  const response = await fetch(`${apiBase()}${path}`, { ...rest, headers });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12_000);
+  let response: Response;
+  try {
+    response = await fetch(`${apiBase()}${path}`, {
+      ...rest,
+      headers,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const code =

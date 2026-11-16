@@ -1,3 +1,4 @@
+import { getClerkInstance } from "@clerk/expo";
 import React, {
   createContext,
   ReactNode,
@@ -14,6 +15,17 @@ import {
   type UserPlan,
   canAccessService,
 } from "@/constants/subscription";
+import { isClerkConfigured } from "@/constants/clerk";
+import {
+  clearClerkLocalProfile,
+  saveClerkLocalProfile,
+} from "@/services/clerkLocalProfile";
+import {
+  clearGuestSession,
+  createGuestProfile,
+  readGuestSession,
+  saveGuestSession,
+} from "@/services/guestSession";
 import {
   isRemoteDataEnabled,
   readSessionToken,
@@ -55,12 +67,17 @@ interface ContextValue {
   savedServiceIds: string[];
   chats: ChatSession[];
   activeChatId: string | null;
+  isGuest: boolean;
+  clerkBridgePaused: boolean;
+  enterGuestSession: (displayName?: string) => void;
   signUp: (profile: UserProfile, password?: string) => Promise<void>;
   logIn: (
     email: string,
     password?: string,
     profile?: UserProfile,
   ) => Promise<boolean>;
+  /** After Clerk OAuth or email auth — enter app; cloud sync is optional. */
+  completeClerkSession: (profile: UserProfile, mode: "login" | "signup") => void;
   updateProfile: (profile: UserProfile) => Promise<void>;
   logOut: () => Promise<void>;
   upgradeToPremium: () => Promise<void>;
@@ -89,6 +106,8 @@ export function SaarthiProvider({ children }: { children: ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
   const [hydrationError, setHydrationError] = useState<string | null>(null);
   const [user, setUser] = useState<UserProfile | null>(null);
+  const [isGuest, setIsGuest] = useState(false);
+  const [clerkBridgePaused, setClerkBridgePaused] = useState(false);
   const [plan, setPlan] = useState<UserPlan>("free");
   const [savedServiceIds, setSaved] = useState<string[]>([]);
   const [chats, setChats] = useState<ChatSession[]>([]);
@@ -115,11 +134,26 @@ export function SaarthiProvider({ children }: { children: ReactNode }) {
     let mounted = true;
 
     async function hydrate() {
+      if (isClerkConfigured) {
+        try {
+          const guestProfile = await readGuestSession();
+          if (mounted && guestProfile) {
+            setUser(guestProfile);
+            setIsGuest(true);
+          }
+        } catch {
+          // ignore
+        }
+        if (mounted) {
+          setHydrationError(null);
+          setHydrated(true);
+        }
+        return;
+      }
+
       if (!isRemoteDataEnabled()) {
         if (mounted) {
-          setHydrationError(
-            "Set EXPO_PUBLIC_API_URL to your live API server so profile and chats stay in real time.",
-          );
+          setHydrationError(null);
           setHydrated(true);
         }
         return;
@@ -146,7 +180,7 @@ export function SaarthiProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         console.error("Could not load Saarthi cloud data:", error);
         if (mounted) {
-          setHydrationError("Could not reach the live Saarthi server.");
+          setHydrationError(null);
           setHydrated(true);
         }
       }
@@ -170,6 +204,23 @@ export function SaarthiProvider({ children }: { children: ReactNode }) {
     applyRemoteState(result);
   }, [applyRemoteState]);
 
+  const completeClerkSession = useCallback(
+    (profile: UserProfile, _mode: "login" | "signup") => {
+      setIsGuest(false);
+      void clearGuestSession();
+      setUser(profile);
+      void saveClerkLocalProfile(profile);
+    },
+    [],
+  );
+
+  const enterGuestSession = useCallback((displayName?: string) => {
+    const profile = createGuestProfile(displayName?.trim() || "Guest");
+    setIsGuest(true);
+    setUser(profile);
+    void saveGuestSession(profile);
+  }, []);
+
   const logIn = useCallback(
     async (email: string, password?: string, profile?: UserProfile) => {
       try {
@@ -188,6 +239,15 @@ export function SaarthiProvider({ children }: { children: ReactNode }) {
 
   const updateProfile = useCallback(
     async (profile: UserProfile) => {
+      if (isClerkConfigured && !sessionTokenRef.current) {
+        setUser(profile);
+        if (isGuest) {
+          await saveGuestSession(profile);
+        } else {
+          await saveClerkLocalProfile(profile);
+        }
+        return;
+      }
       const token = sessionTokenRef.current;
       if (!token) throw new Error("Not signed in.");
       const next = await remoteUpdateProfile(token, profile);
@@ -198,7 +258,7 @@ export function SaarthiProvider({ children }: { children: ReactNode }) {
         chats: next.chats,
       });
     },
-    [applyRemoteState],
+    [applyRemoteState, isGuest],
   );
 
   const upgradeToPremium = useCallback(async () => {
@@ -209,15 +269,35 @@ export function SaarthiProvider({ children }: { children: ReactNode }) {
   }, [applyRemoteState]);
 
   const logOut = useCallback(async () => {
-    const token = sessionTokenRef.current;
-    if (token) await remoteLogout(token);
-    sessionTokenRef.current = null;
-    setSessionToken(null);
-    setUser(null);
-    setPlan("free");
-    setSaved([]);
-    setChats([]);
-    setActive(null);
+    setClerkBridgePaused(true);
+    try {
+      const token = sessionTokenRef.current;
+      if (token && !isClerkConfigured) {
+        await remoteLogout(token);
+      }
+      if (isClerkConfigured) {
+        try {
+          const clerk = getClerkInstance();
+          if (clerk) {
+            await clerk.signOut();
+          }
+        } catch (error) {
+          console.warn("Clerk sign-out:", error);
+        }
+      }
+      await clearClerkLocalProfile();
+      await clearGuestSession();
+      sessionTokenRef.current = null;
+      setSessionToken(null);
+      setIsGuest(false);
+      setUser(null);
+      setPlan("free");
+      setSaved([]);
+      setChats([]);
+      setActive(null);
+    } finally {
+      setClerkBridgePaused(false);
+    }
   }, []);
 
   const toggleSaved = useCallback(async (serviceId: string) => {
@@ -356,8 +436,12 @@ export function SaarthiProvider({ children }: { children: ReactNode }) {
       savedServiceIds,
       chats,
       activeChatId,
+      isGuest,
+      clerkBridgePaused,
+      enterGuestSession,
       signUp,
       logIn,
+      completeClerkSession,
       updateProfile,
       logOut,
       upgradeToPremium,
@@ -378,8 +462,12 @@ export function SaarthiProvider({ children }: { children: ReactNode }) {
       savedServiceIds,
       chats,
       activeChatId,
+      isGuest,
+      clerkBridgePaused,
+      enterGuestSession,
       signUp,
       logIn,
+      completeClerkSession,
       updateProfile,
       logOut,
       upgradeToPremium,

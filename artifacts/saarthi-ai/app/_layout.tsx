@@ -7,6 +7,7 @@ import {
   Inter_700Bold,
   useFonts,
 } from "@expo-google-fonts/inter";
+import { Feather } from "@expo/vector-icons";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -15,15 +16,15 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { ClerkProfileBridge } from "@/components/auth/ClerkProfileBridge";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { clerkPublishableKey, isClerkConfigured } from "@/constants/clerk";
 import { LanguageProvider } from "@/context/LanguagesContext";
 import { SaarthiProvider } from "@/context/SaarthiContext";
 
 SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
-
-const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY?.trim();
 
 function AppProviders({ children }: { children: React.ReactNode }) {
   return (
@@ -33,7 +34,10 @@ function AppProviders({ children }: { children: React.ReactNode }) {
           <GestureHandlerRootView style={{ flex: 1 }}>
             <KeyboardProvider>
               <LanguageProvider>
-                <SaarthiProvider>{children}</SaarthiProvider>
+                <SaarthiProvider>
+                  {isClerkConfigured ? <ClerkProfileBridge /> : null}
+                  {children}
+                </SaarthiProvider>
               </LanguageProvider>
             </KeyboardProvider>
           </GestureHandlerRootView>
@@ -46,6 +50,7 @@ function AppProviders({ children }: { children: React.ReactNode }) {
 function RootNavigator() {
   return (
     <Stack screenOptions={{ headerBackTitle: "Back" }}>
+      <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen
         name="auth"
@@ -54,6 +59,14 @@ function RootNavigator() {
           gestureEnabled: false,
         }}
       />
+      <Stack.Screen
+        name="login"
+        options={{
+          headerShown: false,
+          gestureEnabled: false,
+        }}
+      />
+      <Stack.Screen name="signup" options={{ headerShown: false }} />
       <Stack.Screen name="service" options={{ headerShown: false }} />
       <Stack.Screen name="sso-callback" options={{ headerShown: false }} />
     </Stack>
@@ -66,6 +79,7 @@ export default function RootLayout() {
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
+    ...Feather.font,
   });
 
   useEffect(() => {
@@ -80,8 +94,7 @@ export default function RootLayout() {
     </AppProviders>
   );
 
-  // Never crash the APK if the key was omitted from a build — local auth still works.
-  if (!publishableKey) {
+  if (!isClerkConfigured) {
     console.warn(
       "[Saarthi] EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY missing; running without Clerk.",
     );
@@ -89,7 +102,10 @@ export default function RootLayout() {
   }
 
   return (
-    <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
+    <ClerkProvider
+      publishableKey={clerkPublishableKey}
+      tokenCache={tokenCache}
+    >
       {tree}
     </ClerkProvider>
   );

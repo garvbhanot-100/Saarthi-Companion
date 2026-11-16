@@ -1,4 +1,5 @@
 const { spawn } = require("node:child_process");
+const os = require("node:os");
 const path = require("node:path");
 
 const env = { ...process.env };
@@ -11,6 +12,29 @@ if (env.EXPO_NO_DEPENDENCY_VALIDATION == null) {
 // Large Windows monorepos often fail Metro's native watcher startup.
 if (env.CHOKIDAR_USEPOLLING == null) {
   env.CHOKIDAR_USEPOLLING = "1";
+}
+// With expo-dev-client installed, Expo may show http://LAN:port/_expo/loading — scanning
+// that URL with the phone camera opens the browser instead of Expo Go.
+if (env.EXPO_NO_REDIRECT_PAGE == null) {
+  env.EXPO_NO_REDIRECT_PAGE = "1";
+}
+if (env.BROWSER == null) {
+  env.BROWSER = "none";
+}
+if (env.CI === "true" || env.CI === "1") {
+  delete env.CI;
+}
+
+function getLanIpv4() {
+  const nets = os.networkInterfaces();
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name] ?? []) {
+      if (net.family === "IPv4" && !net.internal) {
+        return net.address;
+      }
+    }
+  }
+  return null;
 }
 if (env.REPLIT_EXPO_DEV_DOMAIN) {
   env.EXPO_PACKAGER_PROXY_URL = `https://${env.REPLIT_EXPO_DEV_DOMAIN}`;
@@ -37,11 +61,33 @@ const connectionMode =
 if (connectionMode === "--lan" && requestedConnectionModes.length === 1) {
   delete env.EXPO_PACKAGER_PROXY_URL;
   delete env.REACT_NATIVE_PACKAGER_HOSTNAME;
+} else if (connectionMode === "--lan" && env.REACT_NATIVE_PACKAGER_HOSTNAME == null) {
+  const lanIp = getLanIpv4();
+  if (lanIp) {
+    env.REACT_NATIVE_PACKAGER_HOSTNAME = lanIp;
+  }
+}
+
+const API_PORT = (env.SAARTHI_API_PORT || "5000").trim();
+if (!env.EXPO_PUBLIC_API_URL?.trim()) {
+  const lanIp = getLanIpv4();
+  const host = lanIp || "127.0.0.1";
+  env.EXPO_PUBLIC_API_URL = `http://${host}:${API_PORT}`;
+  console.log(
+    `API: ${env.EXPO_PUBLIC_API_URL} (override with EXPO_PUBLIC_API_URL in artifacts/saarthi-ai/.env)`,
+  );
 }
 const expoArgs = extraArgs.filter((arg) => !connectionModes.includes(arg));
 // expo-dev-client is installed, so Expo would otherwise print a QR code that
 // only a development build can open. Default to Expo Go unless asked otherwise.
 const targetsDevClient = expoArgs.includes("--dev-client");
+if (!targetsDevClient) {
+  console.log(
+    "\nExpo Go: QR ko phone ke Camera se mat scan karo.\n" +
+      "Expo Go app kholo → Scan QR code → terminal wala QR scan karo (exp://).\n" +
+      "Dev build chahiye ho to: pnpm start:dev-client\n",
+  );
+}
 const child = spawn(
   process.execPath,
   [

@@ -9,7 +9,7 @@ Real-time admin panel: logged-in users, profile, saved services, and chats from 
 3. Optional (SSE live updates): run SQL in `lib/db/sql/saarthi_realtime_notify.sql` on your Postgres database.
 4. Copy `web/.env.example` → `web/.env` (`VITE_API_URL`, `VITE_CLERK_PUBLISHABLE_KEY` — same Clerk app as mobile).
 5. On Render, set **`CLERK_SECRET_KEY`** (Clerk Dashboard → API Keys) so Google admin tokens validate on the API.
-5. In `artifacts/saarthi-ai/.env` set `EXPO_PUBLIC_API_URL=http://localhost:5000` (use your machine IP on a physical phone).
+6. In `artifacts/saarthi-ai/.env` set `EXPO_PUBLIC_API_URL=http://localhost:5000` (use your machine IP on a physical phone).
 
 ## Run
 
@@ -21,7 +21,7 @@ pnpm --filter @workspace/saarthi-ai run dev
 
 Use **pnpm** from the repo root (not `npm` in `web/` — workspace linking breaks otherwise).
 
-Admin login: **aaniya1985@gmail.com** or **garvbhanot990@gmail.com**, plus password from `SAARTHI_ADMIN_PASSWORD` in `artifacts/api-server/.env`.
+Admin login: **Continue with Google** (approved emails only) or **aaniya1985@gmail.com** / **garvbhanot990@gmail.com** + `SAARTHI_ADMIN_PASSWORD`.
 
 ## Deploy on Vercel (admin panel)
 

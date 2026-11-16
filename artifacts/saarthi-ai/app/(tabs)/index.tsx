@@ -125,7 +125,7 @@ export default function Home() {
               <MotionPressable
                 accessibilityRole="button"
                 accessibilityLabel={t("profile")}
-                onPress={() => router.push(user ? "/profile" : "/auth")}
+                onPress={() => router.push(user ? "/profile" : "/login")}
                 style={styles.avatar}
               >
                 {user ? (

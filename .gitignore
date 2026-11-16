@@ -64,3 +64,5 @@ artifacts/saarthi-ai/**/*.p12
 artifacts/saarthi-ai/**/*.key
 artifacts/saarthi-ai/**/*.mobileprovision
 artifacts/saarthi-ai/**/*.pem
+.vercel
+.env*

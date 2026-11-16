@@ -2,7 +2,7 @@ import { useClerk, useSSO } from "@clerk/expo";
 import Constants, { ExecutionEnvironment } from "expo-constants";
 import * as AuthSession from "expo-auth-session";
 import React, { useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 
 import { MotionPressable } from "@/components/Motion";
@@ -55,7 +55,7 @@ type Props = {
   onBusyChange: (busy: boolean) => void;
   onError: (message: string) => void;
   onSuccess: () => void;
-  variant?: "default" | "hero";
+  variant?: "default" | "hero" | "icon" | "auth";
 };
 
 export function GoogleClerkButton({
@@ -64,11 +64,11 @@ export function GoogleClerkButton({
   onBusyChange,
   onError,
   onSuccess,
-  variant = "default",
+  variant = "auth",
 }: Props) {
   const c = useColors();
   const { t } = useLanguage();
-  const { signUp, logIn } = useSaarthi();
+  const { completeClerkSession } = useSaarthi();
   const { startSSOFlow } = useSSO();
   const clerk = useClerk();
   const [localBusy, setLocalBusy] = useState(false);
@@ -134,15 +134,7 @@ export function GoogleClerkButton({
         email: emailAddress.trim().toLowerCase(),
       };
 
-      if (mode === "login") {
-        const ok = await logIn(profile.email, undefined, profile);
-        if (!ok) {
-          onError(t("profileAuthGoogleLoginFailed"));
-          return;
-        }
-      } else {
-        await signUp(profile);
-      }
+      completeClerkSession(profile, mode);
       onSuccess();
     } catch (googleError) {
       console.error("Google sign-in failed:", googleError);
@@ -166,6 +158,56 @@ export function GoogleClerkButton({
     }
   };
 
+  if (variant === "icon") {
+    return (
+      <View style={styles.iconRow}>
+        <MotionPressable
+          accessibilityRole="button"
+          accessibilityLabel={t("profileAuthContinueGoogle")}
+          accessibilityState={{ disabled }}
+          disabled={disabled}
+          onPress={() => void continueWithGoogle()}
+          style={({ pressed }) => [
+            styles.googleIconBtn,
+            { opacity: disabled ? 0.65 : pressed ? 0.9 : 1 },
+          ]}
+        >
+          <GoogleIcon size={22} />
+        </MotionPressable>
+      </View>
+    );
+  }
+
+  const label = disabled ? t("profileAuthWaiting") : t("profileAuthContinueGoogle");
+  const iconSize = variant === "hero" ? 22 : 20;
+
+  if (variant === "auth") {
+    return (
+      <View style={styles.authWrap}>
+        <MotionPressable
+          accessibilityRole="button"
+          accessibilityLabel={t("profileAuthContinueGoogle")}
+          accessibilityState={{ disabled }}
+          disabled={disabled}
+          onPress={() => void continueWithGoogle()}
+          style={({ pressed }) => [
+            styles.googleAuthBtn,
+            { opacity: disabled ? 0.75 : pressed ? 0.92 : 1 },
+          ]}
+        >
+          {disabled ? (
+            <ActivityIndicator size="small" color="#4f46e5" />
+          ) : (
+            <GoogleIcon size={iconSize} />
+          )}
+          <Text style={styles.googleAuthLabel} numberOfLines={1}>
+            {label}
+          </Text>
+        </MotionPressable>
+      </View>
+    );
+  }
+
   return (
     <View>
       <MotionPressable
@@ -183,7 +225,7 @@ export function GoogleClerkButton({
           },
         ]}
       >
-        <GoogleIcon size={variant === "hero" ? 22 : 18} />
+        <GoogleIcon size={iconSize} />
         <Text
           style={[
             styles.googleBtnText,
@@ -191,7 +233,7 @@ export function GoogleClerkButton({
           ]}
           numberOfLines={1}
         >
-          {disabled ? t("profileAuthWaiting") : t("profileAuthContinueGoogle")}
+          {label}
         </Text>
       </MotionPressable>
     </View>
@@ -199,6 +241,48 @@ export function GoogleClerkButton({
 }
 
 const styles = StyleSheet.create({
+  authWrap: {
+    marginBottom: 6,
+  },
+  googleAuthBtn: {
+    minHeight: 52,
+    borderRadius: 14,
+    backgroundColor: "#eef1f8",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+    paddingHorizontal: 18,
+    shadowColor: "#94a3b8",
+    shadowOpacity: 0.14,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  googleAuthLabel: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 15,
+    color: "#334155",
+    letterSpacing: -0.2,
+  },
+  iconRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  googleIconBtn: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#64748b",
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
   googleBtn: {
     minHeight: 52,
     borderWidth: 1,

@@ -25,8 +25,28 @@ export const profileAuthTranslations: Record<
     profileAuthConfirmPassword: "Confirm password",
     profileAuthReenterPassword: "Re-enter password",
     profileAuthWaiting: "Please wait…",
+    profileAuthClerkLoading: "Getting ready…",
     profileAuthCreateLocalProfile: "Create local profile",
     profileAuthOr: "OR",
+    profileAuthOrContinueWith: "or continue with",
+    profileAuthScreenLogin: "Log in",
+    profileAuthScreenSignup: "Sign up",
+    profileAuthCreatePassword: "Create a password",
+    profileAuthShowPassword: "Show password",
+    profileAuthHidePassword: "Hide password",
+    profileAuthNoAccount: "Don't have an account?",
+    profileAuthContinueAsGuest: "Continue as guest",
+    profileAuthGuestName: "Guest",
+    profileAuthGuestHint: "Preview the app on this device — no sign-in.",
+    profileAuthHaveAccount: "Already have an account?",
+    profileAuthEmailTaken:
+      "This email is already registered. Try logging in instead.",
+    profileAuthInvalidCredentials:
+      "Incorrect email or password. Try again or use Google.",
+    profileAuthApiRequired:
+      "Server connect nahi ho paya. PC par API start karein aur phone same Wi‑Fi par rakhein.",
+    profileAuthServerUnreachable:
+      "Sartva server tak pahunch nahi paye. API chal raha hai? Internet / Wi‑Fi check karein.",
     profileAuthContinueGoogle: "Continue with Google",
     profileAuthPasswordResetTitle: "Password reset setup",
     profileAuthPasswordResetDescription:
@@ -49,7 +69,9 @@ export const profileAuthTranslations: Record<
     profileAuthSignupGoogleOnly:
       "Create your account with Google — it’s quick, secure, and saves your profile to the cloud.",
     profileAuthClerkRequiredForSignup:
-      "Google sign-up needs Clerk configured (EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY).",
+      "Clerk is not set up. Add EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY and restart Expo.",
+    profileAuthClerkVerifyEmail:
+      "Clerk ne email bheja hai — verify karke phir log in karein.",
     profileAuthBenefitSaved: "Bookmark government services",
     profileAuthBenefitChats: "Chats saved across devices",
     profileAuthBenefitSecure: "One-tap secure Google sign-in",

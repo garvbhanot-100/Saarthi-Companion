@@ -15,11 +15,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import LanguageSelector from "@/components/LanguageSelector";
 import { FadeInView, MotionPressable } from "@/components/Motion";
-import { GhostButton } from "@/components/UI";
 import { languages } from "@/constants/languages";
 import { useLanguage } from "@/context/LanguagesContext";
 import { useSaarthi } from "@/context/SaarthiContext";
 import { useColors } from "@/hooks/useColors";
+import { confirmAction } from "@/utils/confirmAction";
 
 export default function Profile() {
   const c = useColors();
@@ -34,6 +34,7 @@ export default function Profile() {
     hydrationError,
     updateProfile,
     logOut,
+    isGuest,
     deleteChat,
     openChat,
   } = useSaarthi();
@@ -74,7 +75,7 @@ export default function Profile() {
   }
 
   if (!user) {
-    return <Redirect href="/auth" />;
+    return <Redirect href="/login" />;
   }
 
   const startEdit = () => {
@@ -104,27 +105,24 @@ export default function Profile() {
   };
 
   const handleSignOut = () => {
-    Alert.alert(t("profileSignOut"), t("profileOnThisDevice"), [
-      { text: t("cancel"), style: "cancel" },
-      {
-        text: t("profileSignOut"),
-        style: "destructive",
-        onPress: () => {
-          void (async () => {
-            setLoggingOut(true);
-            try {
-              await logOut();
-              router.replace("/auth");
-            } catch (error) {
-              console.error("Could not sign out:", error);
-              router.replace("/auth");
-            } finally {
-              setLoggingOut(false);
-            }
-          })();
-        },
+    confirmAction(
+      t("profileSignOut"),
+      t("profileOnThisDevice"),
+      t("profileSignOut"),
+      async () => {
+        setLoggingOut(true);
+        try {
+          await logOut();
+          router.replace("/login");
+        } catch (error) {
+          console.error("Could not sign out:", error);
+          router.replace("/login");
+        } finally {
+          setLoggingOut(false);
+        }
       },
-    ]);
+      t("cancel"),
+    );
   };
 
   return (
@@ -399,34 +397,6 @@ export default function Profile() {
                 <LanguageSelector />
               </View>
 
-              <MotionPressable
-                accessibilityRole="button"
-                accessibilityLabel={t("profileSignOut")}
-                disabled={loggingOut}
-                onPress={handleSignOut}
-                style={({ pressed }) => [
-                  styles.logoutBtn,
-                  {
-                    backgroundColor: c.card,
-                    borderColor: c.destructive,
-                    opacity: loggingOut ? 0.6 : pressed ? 0.88 : 1,
-                  },
-                ]}
-              >
-                {loggingOut ? (
-                  <ActivityIndicator color={c.destructive} />
-                ) : (
-                  <>
-                    <Feather name="log-out" size={18} color={c.destructive} />
-                    <Text
-                      style={[styles.logoutText, { color: c.destructive }]}
-                    >
-                      {t("profileSignOut")}
-                    </Text>
-                  </>
-                )}
-              </MotionPressable>
-
               <Text style={[styles.sectionLabel, { color: c.primary }]}>
                 {t("yourSpace")}
               </Text>
@@ -521,11 +491,50 @@ export default function Profile() {
               </Text>
             </View>
 
-            <GhostButton
-              title={t("profileSignOut")}
-              icon="log-out"
+            <MotionPressable
+              accessibilityRole="button"
+              accessibilityLabel={t("profileSignOut")}
+              disabled={loggingOut}
               onPress={handleSignOut}
-            />
+              style={({ pressed }) => [
+                styles.signOutCard,
+                {
+                  backgroundColor: c.card,
+                  borderColor: "rgba(239, 68, 68, 0.35)",
+                  opacity: loggingOut ? 0.72 : pressed ? 0.92 : 1,
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.signOutIconWrap,
+                  { backgroundColor: "rgba(239, 68, 68, 0.12)" },
+                ]}
+              >
+                {loggingOut ? (
+                  <ActivityIndicator color={c.destructive} size="small" />
+                ) : (
+                  <Feather name="log-out" size={20} color={c.destructive} />
+                )}
+              </View>
+              <View style={styles.signOutTextCol}>
+                <Text style={[styles.signOutTitle, { color: c.destructive }]}>
+                  {t("profileSignOut")}
+                </Text>
+                <Text
+                  style={[styles.signOutSubtitle, { color: c.mutedForeground }]}
+                  numberOfLines={2}
+                >
+                  {isGuest ? t("profileAuthGuestHint") : t("profileOnThisDevice")}
+                </Text>
+              </View>
+              <Feather
+                name="chevron-right"
+                size={20}
+                color={c.destructive}
+                style={{ opacity: 0.85 }}
+              />
+            </MotionPressable>
           </View>
         }
         showsVerticalScrollIndicator={false}
@@ -780,20 +789,43 @@ const styles = StyleSheet.create({
     marginTop: 12,
     marginBottom: 8,
   },
-  logoutBtn: {
-    minHeight: 52,
+  signOutCard: {
+    marginTop: 16,
+    minHeight: 72,
     borderWidth: 1.5,
-    borderRadius: 16,
+    borderRadius: 18,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-    marginTop: 8,
-    marginBottom: 4,
+    gap: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    shadowColor: "#ef4444",
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
-  logoutText: {
+  signOutIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  signOutTextCol: {
+    flex: 1,
+    gap: 3,
+    minWidth: 0,
+  },
+  signOutTitle: {
     fontFamily: "Inter_700Bold",
-    fontSize: 15,
+    fontSize: 16,
+    letterSpacing: -0.2,
+  },
+  signOutSubtitle: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    lineHeight: 16,
   },
   sectionLabel: {
     marginTop: 18,
