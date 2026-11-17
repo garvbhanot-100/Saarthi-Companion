@@ -4,7 +4,15 @@ function clerkSecretKey() {
   return process.env.CLERK_SECRET_KEY?.trim() || "";
 }
 
-export async function resolveAdminEmailFromClerkToken(
+export function isClerkBackendConfigured() {
+  return Boolean(clerkSecretKey());
+}
+
+/**
+ * Verifies a Clerk session token server-side and returns the user's primary
+ * email (lower-cased), or null when the token is missing or invalid.
+ */
+export async function resolveEmailFromClerkToken(
   token: string,
 ): Promise<string | null> {
   const secretKey = clerkSecretKey();
@@ -24,3 +32,6 @@ export async function resolveAdminEmailFromClerkToken(
     return null;
   }
 }
+
+/** Admin routes use the same verification; the email allowlist is applied by the caller. */
+export const resolveAdminEmailFromClerkToken = resolveEmailFromClerkToken;

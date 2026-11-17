@@ -22,7 +22,12 @@ export type ContentSegment =
   | { kind: "link"; text: string; url: string }
   | { kind: "unverified-link"; text: string };
 
-const configuredApiUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
+// The assistant talks to the AI backend (server/serve.js). EXPO_PUBLIC_AI_URL
+// points at it directly; production builds that only set EXPO_PUBLIC_API_URL
+// keep using that origin.
+const configuredApiUrl =
+  process.env.EXPO_PUBLIC_AI_URL?.trim() ||
+  process.env.EXPO_PUBLIC_API_URL?.trim();
 const expoHost = Constants.expoConfig?.hostUri?.split(":")[0];
 const API_URL = (
   configuredApiUrl || `http://${expoHost || "localhost"}:3000`
@@ -266,9 +271,9 @@ export async function getAssistantReply(
     });
   } catch (error) {
     if (controller.signal.aborted) {
-      throw new Error("Assistant request timed out.");
+      throw new Error(`Assistant request to ${API_URL} timed out.`);
     }
-    throw new Error("Could not reach the assistant service.");
+    throw new Error(`Could not reach the assistant service at ${API_URL}.`);
   } finally {
     clearTimeout(timeout);
   }
@@ -277,11 +282,21 @@ export async function getAssistantReply(
   try {
     data = await response.json();
   } catch {
-    throw new Error("The assistant service returned an invalid response.");
+    throw new Error(
+      `The assistant service returned an invalid response (HTTP ${response.status}).`,
+    );
   }
 
   if (!response.ok) {
-    throw new Error("The assistant service could not complete the request.");
+    // Surface the backend's error code (never a secret) for diagnosis.
+    const error =
+      typeof data === "object" && data !== null && "error" in data
+        ? (data as { error?: { code?: unknown } }).error
+        : undefined;
+    const code = typeof error?.code === "string" ? error.code : "UNKNOWN";
+    throw new Error(
+      `The assistant service could not complete the request (HTTP ${response.status}, ${code}).`,
+    );
   }
 
   if (

@@ -1,6 +1,8 @@
 import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
+import { assistantJsonParser } from "./routes/assistant";
+import { razorpayWebhookRawParser } from "./routes/payments";
 import router from "./routes";
 import { logger } from "./lib/logger";
 
@@ -26,6 +28,8 @@ app.use(
   }),
 );
 app.use(cors());
+app.use("/api/assistant", assistantJsonParser);
+app.use("/api/payments/razorpay/webhook", razorpayWebhookRawParser);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

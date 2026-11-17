@@ -11,7 +11,6 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { DummyRazorpayModal } from "@/components/DummyRazorpayModal";
 import { FadeInView, MotionPressable } from "@/components/Motion";
 import { PrimaryButton } from "@/components/UI";
 import {
@@ -35,7 +34,6 @@ export default function Premium() {
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
   const { plan, isPremium, upgradeToPremium } = useSaarthi();
-  const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [paying, setPaying] = useState(false);
 
   const freeNames = services
@@ -43,11 +41,13 @@ export default function Premium() {
     .map((s) => s.name);
 
   const handlePay = async () => {
+    if (paying) return; // blocks double taps while an order is in progress
     setPaying(true);
     try {
-      await upgradeToPremium();
-      setCheckoutOpen(false);
-      Alert.alert(t("premiumUnlockedTitle"), t("premiumUnlockedMessage"));
+      const outcome = await upgradeToPremium();
+      if (outcome === "success") {
+        Alert.alert(t("premiumUnlockedTitle"), t("premiumUnlockedMessage"));
+      }
     } catch {
       Alert.alert(t("premiumUpgradeFailed"));
     } finally {
@@ -130,7 +130,8 @@ export default function Premium() {
           <View style={{ marginTop: 20 }}>
             <PrimaryButton
               title={t("unlockAllServicesCta")}
-              onPress={() => setCheckoutOpen(true)}
+              onPress={() => void handlePay()}
+              disabled={paying}
             />
           </View>
         ) : (
@@ -149,13 +150,6 @@ export default function Premium() {
           </MotionPressable>
         )}
       </ScrollView>
-
-      <DummyRazorpayModal
-        visible={checkoutOpen}
-        busy={paying}
-        onClose={() => !paying && setCheckoutOpen(false)}
-        onSimulateSuccess={() => void handlePay()}
-      />
     </FadeInView>
   );
 }

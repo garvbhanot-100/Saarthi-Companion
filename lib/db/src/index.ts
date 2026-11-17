@@ -28,4 +28,10 @@ if (!process.env.DATABASE_URL) {
 export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 export { PrismaClient };
-export type { Prisma, SaarthiUser, SaarthiChat, SaarthiChatMessage } from "@prisma/client";
+export type {
+  Prisma,
+  SaarthiUser,
+  SaarthiChat,
+  SaarthiChatMessage,
+  SaarthiPayment,
+} from "@prisma/client";

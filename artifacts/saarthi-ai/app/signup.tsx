@@ -1,10 +1,9 @@
 import { Feather } from "@expo/vector-icons";
-import {
-  isClerkAPIResponseError,
-  useAuth,
-  useClerk,
-  useSignUp,
-} from "@clerk/expo";
+import { isClerkAPIResponseError, useAuth, useClerk } from "@clerk/expo";
+// @clerk/expo v4 (Clerk Core 3) changed `useSignUp` from "@clerk/expo" to the
+// signal API (no isLoaded/setActive). The classic hook this screen is written
+// for is the officially supported export from "@clerk/expo/legacy".
+import { useSignUp } from "@clerk/expo/legacy";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
@@ -57,6 +56,9 @@ export default function SignupScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  // Set when Clerk requires the email to be verified with a one-time code.
+  const [awaitingCode, setAwaitingCode] = useState(false);
+  const [code, setCode] = useState("");
   const authInProgress = useRef(false);
 
   useOAuthBrowserWarmup();
@@ -67,6 +69,47 @@ export default function SignupScreen() {
       enterApp();
     }
   }, [profileHydrated, authLoaded, isSignedIn, user]);
+
+  const finishSignUp = async (createdSessionId: string, trimmedName: string) => {
+    await setActive!({ session: createdSessionId });
+    const profile =
+      profileFromClerkUser(clerk.user ?? {}, trimmedName) ?? {
+        name: trimmedName,
+        email: email.trim().toLowerCase(),
+      };
+    completeClerkSession(profile, "signup");
+    enterApp();
+  };
+
+  const submitCode = async () => {
+    if (authInProgress.current) return;
+    setError("");
+    if (!code.trim()) {
+      setError(t("profileAuthVerificationCodeRequired"));
+      return;
+    }
+    if (!signUpLoaded || !clerkSignUp) {
+      setError(t("profileAuthClerkLoading"));
+      return;
+    }
+    authInProgress.current = true;
+    setBusy(true);
+    try {
+      const result = await clerkSignUp.attemptEmailAddressVerification({
+        code: code.trim(),
+      });
+      if (result.status === "complete" && result.createdSessionId) {
+        await finishSignUp(result.createdSessionId, name.trim());
+        return;
+      }
+      setError(t("profileAuthClerkVerifyEmail"));
+    } catch (e) {
+      setError(clerkErrorMessage(e, t("profileAuthClerkFailed")));
+    } finally {
+      authInProgress.current = false;
+      setBusy(false);
+    }
+  };
 
   const submitEmail = async () => {
     if (authInProgress.current) return;
@@ -99,24 +142,23 @@ export default function SignupScreen() {
     setBusy(true);
     try {
       const parts = trimmedName.split(/\s+/);
-      await clerkSignUp.create({
+      // Use the returned resource: the hook's object can be stale right after create().
+      const created = await clerkSignUp.create({
         emailAddress: normalizedEmail,
         password,
         firstName: parts[0],
         lastName: parts.slice(1).join(" ") || undefined,
       });
-      if (
-        clerkSignUp.status === "complete" &&
-        clerkSignUp.createdSessionId
-      ) {
-        await setActive({ session: clerkSignUp.createdSessionId });
-        const profile =
-          profileFromClerkUser(clerk.user ?? {}, trimmedName) ?? {
-            name: trimmedName,
-            email: normalizedEmail,
-          };
-        completeClerkSession(profile, "signup");
-        enterApp();
+      if (created.status === "complete" && created.createdSessionId) {
+        await finishSignUp(created.createdSessionId, trimmedName);
+        return;
+      }
+      if (created.unverifiedFields.includes("email_address")) {
+        await created.prepareEmailAddressVerification({
+          strategy: "email_code",
+        });
+        setCode("");
+        setAwaitingCode(true);
         return;
       }
       setError(t("profileAuthClerkVerifyEmail"));
@@ -203,10 +245,28 @@ export default function SignupScreen() {
         }
       />
 
+      {awaitingCode ? (
+        <AuthField
+          label={t("profileAuthVerificationCode")}
+          icon="shield"
+          value={code}
+          onChangeText={setCode}
+          placeholder={t("profileAuthVerificationCodeHint")}
+          keyboardType="number-pad"
+          autoCapitalize="none"
+        />
+      ) : null}
+
       <AuthGradientButton
-        label={busy ? t("profileAuthWaiting") : t("profileAuthScreenSignup")}
+        label={
+          busy
+            ? t("profileAuthWaiting")
+            : awaitingCode
+              ? t("profileAuthVerifyEmailCta")
+              : t("profileAuthScreenSignup")
+        }
         busy={busy}
-        onPress={() => void submitEmail()}
+        onPress={() => void (awaitingCode ? submitCode() : submitEmail())}
         gradientColors={AUTH_BTN_GRADIENT_SIGNUP}
       />
     </SoftAuthLayout>

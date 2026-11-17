@@ -167,10 +167,56 @@ export async function remoteUpdateProfile(
   };
 }
 
-export async function remoteUpgradePremium(sessionToken: string) {
-  const data = await apiFetch("/saarthi/upgrade-premium", {
+/**
+ * Exchanges a Clerk session token for a Saarthi API session. The server
+ * verifies the token with Clerk and takes the email from Clerk, not from us.
+ */
+export async function remoteClerkSession(clerkToken: string, name: string) {
+  const data = await apiFetch("/saarthi/clerk-session", {
+    method: "POST",
+    body: JSON.stringify({ clerkToken, name }),
+  });
+  const state = data.state as Record<string, unknown>;
+  return {
+    sessionToken: data.token as string,
+    user: state.user as UserProfile,
+    plan: parsePlan(state.plan),
+    savedServiceIds: state.savedServiceIds as string[],
+    chats: state.chats as ChatSession[],
+  };
+}
+
+export type PremiumOrder = {
+  orderId: string;
+  amount: number;
+  currency: string;
+  keyId: string;
+};
+
+export async function remoteCreatePremiumOrder(
+  sessionToken: string,
+): Promise<PremiumOrder> {
+  const data = await apiFetch("/payments/razorpay/order", {
     method: "POST",
     sessionToken,
+  });
+  return {
+    orderId: data.orderId as string,
+    amount: data.amount as number,
+    currency: data.currency as string,
+    keyId: data.keyId as string,
+  };
+}
+
+/** Server verifies the Razorpay signature and grants Premium; returns fresh state. */
+export async function remoteVerifyPremiumPayment(
+  sessionToken: string,
+  payment: { orderId: string; paymentId: string; signature: string },
+) {
+  const data = await apiFetch("/payments/razorpay/verify", {
+    method: "POST",
+    sessionToken,
+    body: JSON.stringify(payment),
   });
   return {
     user: data.user as UserProfile,
@@ -178,6 +224,17 @@ export async function remoteUpgradePremium(sessionToken: string) {
     savedServiceIds: data.savedServiceIds as string[],
     chats: data.chats as ChatSession[],
   };
+}
+
+export async function remotePremiumOrderStatus(
+  sessionToken: string,
+  orderId: string,
+): Promise<"created" | "paid" | "failed"> {
+  const data = await apiFetch(
+    `/payments/razorpay/order/${encodeURIComponent(orderId)}/status`,
+    { sessionToken },
+  );
+  return data.status as "created" | "paid" | "failed";
 }
 
 export async function remotePushSaved(

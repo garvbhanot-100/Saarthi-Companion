@@ -26,12 +26,23 @@ export type UserPlan = "free" | "premium";
 export type UserStateDto = {
   user: UserProfileDto;
   plan: UserPlan;
+  /** ISO timestamp; null when the user has never had (or no longer has) Premium. */
+  premiumExpiresAt: string | null;
   savedServiceIds: string[];
   chats: ChatSessionDto[];
 };
 
-function normalizePlan(plan: string | null | undefined): UserPlan {
-  return plan === "premium" ? "premium" : "free";
+/**
+ * Premium is derived only from the server-side expiry timestamp written after a
+ * verified payment. When it passes, the user is Free again without any job.
+ */
+export function planFromExpiry(
+  premiumExpiresAt: Date | null | undefined,
+  now: Date = new Date(),
+): UserPlan {
+  return premiumExpiresAt && premiumExpiresAt.getTime() > now.getTime()
+    ? "premium"
+    : "free";
 }
 
 function hashPassword(salt: string, password: string) {
@@ -51,7 +62,7 @@ function sessionExpiry() {
 function mapUserState(user: {
   name: string;
   email: string;
-  plan: string;
+  premiumExpiresAt: Date | null;
   saved: { serviceId: string }[];
   chats: {
     id: string;
@@ -69,7 +80,11 @@ function mapUserState(user: {
 }): UserStateDto {
   return {
     user: { name: user.name, email: user.email },
-    plan: normalizePlan(user.plan),
+    plan: planFromExpiry(user.premiumExpiresAt),
+    premiumExpiresAt:
+      planFromExpiry(user.premiumExpiresAt) === "premium"
+        ? user.premiumExpiresAt!.toISOString()
+        : null,
     savedServiceIds: user.saved.map((s) => s.serviceId),
     chats: user.chats.map((c) => ({
       id: c.id,
@@ -174,33 +189,12 @@ export async function signUpUser(
 export async function loginUser(
   emailInput: string,
   password?: string,
-  profile?: UserProfileDto,
 ): Promise<{ token: string; state: UserStateDto } | null> {
   const email = normalizeEmail(emailInput);
-  let user = await prisma.saarthiUser.findUnique({ where: { email } });
+  const user = await prisma.saarthiUser.findUnique({ where: { email } });
 
-  if (profile) {
-    const name = profile.name.trim() || user?.name || "";
-    if (!user) {
-      user = await prisma.saarthiUser.create({
-        data: { email, name, lastLoginAt: new Date() },
-      });
-    } else if (name && name !== user.name) {
-      user = await prisma.saarthiUser.update({
-        where: { id: user.id },
-        data: { name, lastLoginAt: new Date() },
-      });
-    } else {
-      await prisma.saarthiUser.update({
-        where: { id: user.id },
-        data: { lastLoginAt: new Date() },
-      });
-    }
-    const token = await createSession(user.id);
-    const state = (await loadUserState(user.id))!;
-    return { token, state };
-  }
-
+  // Password is always required here. Passwordless sign-in is only allowed
+  // through loginVerifiedEmailUser() after the email was verified by Clerk.
   if (!user || !password) return null;
 
   const cred = await prisma.saarthiCredential.findUnique({
@@ -216,6 +210,31 @@ export async function loginUser(
     data: { lastLoginAt: new Date() },
   });
 
+  const token = await createSession(user.id);
+  const state = (await loadUserState(user.id))!;
+  return { token, state };
+}
+
+/**
+ * Sign in (creating the account if needed) for an email address that the
+ * caller has ALREADY verified server-side, e.g. via a Clerk session token.
+ * Never call this with an email taken from the request body.
+ */
+export async function loginVerifiedEmailUser(
+  verifiedEmail: string,
+  fallbackName: string,
+): Promise<{ token: string; state: UserStateDto }> {
+  const email = normalizeEmail(verifiedEmail);
+  const name = fallbackName.trim() || email.split("@")[0] || "User";
+  const user = await prisma.saarthiUser.upsert({
+    where: { email },
+    create: { email, name, lastLoginAt: new Date() },
+    // Keep the display name in step with the identity provider.
+    update: {
+      lastLoginAt: new Date(),
+      ...(fallbackName.trim() ? { name: fallbackName.trim() } : {}),
+    },
+  });
   const token = await createSession(user.id);
   const state = (await loadUserState(user.id))!;
   return { token, state };
@@ -253,16 +272,6 @@ export async function replaceSavedServices(
         ]
       : []),
   ]);
-}
-
-export async function upgradeUserToPremium(userId: string): Promise<UserStateDto> {
-  await prisma.saarthiUser.update({
-    where: { id: userId },
-    data: { plan: "premium" },
-  });
-  const state = await loadUserState(userId);
-  if (!state) throw new Error("NOT_FOUND");
-  return state;
 }
 
 export async function replaceChats(userId: string, chats: ChatSessionDto[]) {
@@ -320,7 +329,7 @@ export async function listAllUsersForAdmin(): Promise<AdminUserRow[]> {
     id: user.id,
     name: user.name,
     email: user.email,
-    plan: normalizePlan(user.plan),
+    plan: planFromExpiry(user.premiumExpiresAt),
     createdAt: user.createdAt.toISOString(),
     lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
     savedCount: user._count.saved,

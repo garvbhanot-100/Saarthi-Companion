@@ -4,19 +4,23 @@ import {
   deleteSession,
   loadUserState,
   loginUser,
+  loginVerifiedEmailUser,
   replaceChats,
   replaceSavedServices,
   resolveSession,
   signUpUser,
-  upgradeUserToPremium,
   updateUserProfile,
   type ChatSessionDto,
   type UserProfileDto,
 } from "../lib/saarthiStore";
+import {
+  isClerkBackendConfigured,
+  resolveEmailFromClerkToken,
+} from "../lib/clerkAdminAuth";
 
 const router: IRouter = Router();
 
-function getBearerToken(req: Request) {
+export function getBearerToken(req: Request) {
   const header = req.headers.authorization;
   if (header?.startsWith("Bearer ")) {
     return header.slice(7).trim();
@@ -26,7 +30,7 @@ function getBearerToken(req: Request) {
   return bodyToken.trim() || undefined;
 }
 
-async function requireUserId(req: Request, res: Response) {
+export async function requireUserId(req: Request, res: Response) {
   const token = getBearerToken(req);
   const userId = await resolveSession(token);
   if (!userId) {
@@ -76,13 +80,42 @@ router.post("/saarthi/login", async (req, res) => {
   const email = typeof req.body?.email === "string" ? req.body.email : "";
   const password =
     typeof req.body?.password === "string" ? req.body.password : undefined;
-  const profile = req.body?.profile as UserProfileDto | undefined;
-  const result = await loginUser(email, password, profile);
+  const result = await loginUser(email, password);
   if (!result) {
     res.status(401).json({ error: "INVALID_CREDENTIALS" });
     return;
   }
   res.json(result);
+});
+
+/**
+ * Exchanges a Clerk session token for a Saarthi session. The email comes only
+ * from Clerk's server-side verification, never from the request body.
+ */
+router.post("/saarthi/clerk-session", async (req, res) => {
+  if (!isClerkBackendConfigured()) {
+    res.status(503).json({ error: "CLERK_NOT_CONFIGURED" });
+    return;
+  }
+  const clerkToken =
+    typeof req.body?.clerkToken === "string" ? req.body.clerkToken.trim() : "";
+  if (!clerkToken) {
+    res.status(400).json({ error: "INVALID_BODY" });
+    return;
+  }
+  const email = await resolveEmailFromClerkToken(clerkToken);
+  if (!email) {
+    res.status(401).json({ error: "UNAUTHORIZED" });
+    return;
+  }
+  const name = typeof req.body?.name === "string" ? req.body.name : "";
+  try {
+    const result = await loginVerifiedEmailUser(email, name);
+    res.json(result);
+  } catch (error) {
+    req.log.error({ err: error }, "clerk-session failed");
+    res.status(500).json({ error: "SERVER_ERROR" });
+  }
 });
 
 router.post("/saarthi/logout", async (req, res) => {
@@ -127,18 +160,6 @@ router.put("/saarthi/chats", async (req, res) => {
     : [];
   await replaceChats(auth.userId, chats);
   res.json({ chats });
-});
-
-router.post("/saarthi/upgrade-premium", async (req, res) => {
-  const auth = await requireUserId(req, res);
-  if (!auth) return;
-  try {
-    const state = await upgradeUserToPremium(auth.userId);
-    res.json({ sessionToken: auth.token, ...state });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "UNKNOWN";
-    res.status(400).json({ error: message });
-  }
 });
 
 router.get("/saarthi/stream", async (req, res) => {

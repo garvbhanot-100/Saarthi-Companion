@@ -1,10 +1,9 @@
 import { Feather } from "@expo/vector-icons";
-import {
-  isClerkAPIResponseError,
-  useAuth,
-  useClerk,
-  useSignIn,
-} from "@clerk/expo";
+import { isClerkAPIResponseError, useAuth, useClerk } from "@clerk/expo";
+// @clerk/expo v4 (Clerk Core 3) changed `useSignIn` from "@clerk/expo" to the
+// signal API (no isLoaded/setActive). The classic hook this screen is written
+// for is the officially supported export from "@clerk/expo/legacy".
+import { useSignIn } from "@clerk/expo/legacy";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";

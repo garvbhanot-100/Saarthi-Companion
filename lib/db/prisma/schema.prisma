@@ -16,6 +16,8 @@ model SaarthiUser {
   email       String    @unique
   name        String
   plan        String    @default("free")
+  /// Premium is active only while this is in the future (set by verified payments).
+  premiumExpiresAt DateTime? @map("premium_expires_at") @db.Timestamptz(6)
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   lastLoginAt DateTime? @map("last_login_at") @db.Timestamptz(6)
 
@@ -23,8 +25,34 @@ model SaarthiUser {
   sessions   SaarthiSession[]
   saved      SaarthiSavedService[]
   chats      SaarthiChat[]
+  payments   SaarthiPayment[]
 
   @@map("saarthi_users")
+}
+
+/// One row per Razorpay order. Premium is granted only when a row moves to
+/// status "paid" after server-side signature verification (client verify or webhook).
+model SaarthiPayment {
+  id               String      @id @default(uuid()) @db.Uuid
+  userId           String      @map("user_id") @db.Uuid
+  user             SaarthiUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider         String      @default("razorpay")
+  orderId          String      @unique @map("order_id")
+  paymentId        String?     @unique @map("payment_id")
+  amount           Int
+  currency         String
+  /// created | paid | failed
+  status           String      @default("created")
+  method           String?
+  verifiedVia      String?     @map("verified_via")
+  failureReason    String?     @map("failure_reason")
+  premiumExpiresAt DateTime?   @map("premium_expires_at") @db.Timestamptz(6)
+  paidAt           DateTime?   @map("paid_at") @db.Timestamptz(6)
+  createdAt        DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId])
+  @@map("saarthi_payments")
 }
 
 model SaarthiCredential {

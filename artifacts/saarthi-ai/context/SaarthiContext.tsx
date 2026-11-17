@@ -15,6 +15,7 @@ import {
   type UserPlan,
   canAccessService,
 } from "@/constants/subscription";
+import { openRazorpayCheckout } from "@/services/razorpayCheckout";
 import { isClerkConfigured } from "@/constants/clerk";
 import {
   clearClerkLocalProfile,
@@ -29,14 +30,17 @@ import {
 import {
   isRemoteDataEnabled,
   readSessionToken,
+  remoteClerkSession,
+  remoteCreatePremiumOrder,
   remoteFetchState,
   remoteLogin,
   remoteLogout,
   remotePushChats,
   remotePushSaved,
   remoteSignUp,
+  remotePremiumOrderStatus,
   remoteUpdateProfile,
-  remoteUpgradePremium,
+  remoteVerifyPremiumPayment,
   subscribeRemoteState,
 } from "@/services/saarthiRemote";
 
@@ -80,7 +84,12 @@ interface ContextValue {
   completeClerkSession: (profile: UserProfile, mode: "login" | "signup") => void;
   updateProfile: (profile: UserProfile) => Promise<void>;
   logOut: () => Promise<void>;
-  upgradeToPremium: () => Promise<void>;
+  /**
+   * Opens Razorpay checkout for Premium. Resolves "success" only after the
+   * backend has verified the payment; "cancelled" if the user closed checkout.
+   * Throws on failure.
+   */
+  upgradeToPremium: () => Promise<"success" | "cancelled">;
   toggleSaved: (id: string) => Promise<void>;
   startNewChat: () => string;
   appendMessage: (
@@ -204,14 +213,101 @@ export function SaarthiProvider({ children }: { children: ReactNode }) {
     applyRemoteState(result);
   }, [applyRemoteState]);
 
+  const clerkExchangeRef = useRef<{
+    email: string;
+    ticket: object;
+    promise: Promise<string | null>;
+  } | null>(null);
+  /** Email of the account the current API session token belongs to. */
+  const apiSessionEmailRef = useRef<string | null>(null);
+  /** Bumped on logout / account switch so late exchange results are discarded. */
+  const authGenerationRef = useRef(0);
+
+  /** Drops the API session and every piece of per-account data held in memory. */
+  const resetAccountState = useCallback(() => {
+    authGenerationRef.current += 1;
+    clerkExchangeRef.current = null;
+    const oldToken = sessionTokenRef.current;
+    sessionTokenRef.current = null;
+    apiSessionEmailRef.current = null;
+    setSessionToken(null);
+    setPlan("free");
+    setSaved([]);
+    setChats([]);
+    setActive(null);
+    return oldToken;
+  }, []);
+
+  /**
+   * Gets a Saarthi API session for the signed-in Clerk user (the API verifies
+   * the Clerk token server-side). Needed for payments and cloud sync.
+   * The session is always bound to the Clerk account currently signed in.
+   */
+  const ensureClerkApiSession = useCallback(
+    (profile: UserProfile): Promise<string | null> => {
+      const email = profile.email.trim().toLowerCase();
+      if (sessionTokenRef.current && apiSessionEmailRef.current === email) {
+        return Promise.resolve(sessionTokenRef.current);
+      }
+      if (sessionTokenRef.current) {
+        // A different Clerk account signed in: never reuse the old session or data.
+        const oldToken = resetAccountState();
+        if (oldToken) {
+          void remoteLogout(oldToken).catch(() => undefined);
+        }
+      }
+      if (!isRemoteDataEnabled()) return Promise.resolve(null);
+      if (clerkExchangeRef.current?.email === email) {
+        return clerkExchangeRef.current.promise;
+      }
+      const generation = authGenerationRef.current;
+      const ticket = {};
+      const promise = (async () => {
+        try {
+          const clerkToken = await getClerkInstance()?.session?.getToken();
+          if (!clerkToken) return null;
+          const result = await remoteClerkSession(clerkToken, profile.name);
+          if (
+            generation !== authGenerationRef.current ||
+            result.user.email.trim().toLowerCase() !== email
+          ) {
+            // Logged out / switched account meanwhile, or token belongs to
+            // someone else: discard this session instead of applying it.
+            void remoteLogout(result.sessionToken).catch(() => undefined);
+            return null;
+          }
+          sessionTokenRef.current = result.sessionToken;
+          apiSessionEmailRef.current = email;
+          setSessionToken(result.sessionToken);
+          applyRemoteState(result);
+          return result.sessionToken;
+        } catch (error) {
+          console.warn(
+            "Could not start API session from Clerk:",
+            error instanceof Error ? error.message : "unknown error",
+          );
+          return null;
+        } finally {
+          if (clerkExchangeRef.current?.ticket === ticket) {
+            clerkExchangeRef.current = null;
+          }
+        }
+      })();
+      clerkExchangeRef.current = { email, ticket, promise };
+      return promise;
+    },
+    [applyRemoteState, resetAccountState],
+  );
+
   const completeClerkSession = useCallback(
     (profile: UserProfile, _mode: "login" | "signup") => {
       setIsGuest(false);
       void clearGuestSession();
       setUser(profile);
       void saveClerkLocalProfile(profile);
+      void ensureClerkApiSession(profile);
     },
-    [],
+    [ensureClerkApiSession],
   );
 
   const enterGuestSession = useCallback((displayName?: string) => {
@@ -261,19 +357,90 @@ export function SaarthiProvider({ children }: { children: ReactNode }) {
     [applyRemoteState, isGuest],
   );
 
-  const upgradeToPremium = useCallback(async () => {
-    const token = sessionTokenRef.current;
-    if (!token) throw new Error("Not signed in.");
-    const next = await remoteUpgradePremium(token);
-    applyRemoteState(next);
-  }, [applyRemoteState]);
+  const refreshRemoteState = useCallback(
+    async (token: string) => {
+      const fresh = await remoteFetchState(token);
+      if (fresh) applyRemoteState(fresh);
+    },
+    [applyRemoteState],
+  );
+
+  const upgradeToPremium = useCallback(async (): Promise<
+    "success" | "cancelled"
+  > => {
+    let token = sessionTokenRef.current;
+    if (!token && isClerkConfigured && user && !isGuest) {
+      token = await ensureClerkApiSession(user);
+    }
+    if (!token) throw new Error("NOT_SIGNED_IN");
+
+    let order;
+    try {
+      order = await remoteCreatePremiumOrder(token);
+    } catch (error) {
+      if (error instanceof Error && error.message === "ALREADY_PREMIUM") {
+        await refreshRemoteState(token);
+        return "success";
+      }
+      throw error;
+    }
+
+    const checkout = await openRazorpayCheckout({
+      keyId: order.keyId,
+      orderId: order.orderId,
+      amount: order.amount,
+      currency: order.currency,
+      description: "Sartva Premium — 30 days",
+      prefill: user ? { name: user.name, email: user.email } : undefined,
+      themeColor: "#4F46E5",
+    });
+
+    // Premium is never granted from the checkout callback alone: either the
+    // backend verifies the signature now, or the webhook already marked it paid.
+    const confirmedByServer = async () => {
+      try {
+        const status = await remotePremiumOrderStatus(token, order.orderId);
+        if (status === "paid") {
+          await refreshRemoteState(token);
+          return true;
+        }
+      } catch {
+        /* treat as not confirmed */
+      }
+      return false;
+    };
+
+    if (checkout.kind === "success") {
+      try {
+        const next = await remoteVerifyPremiumPayment(token, {
+          orderId: checkout.orderId,
+          paymentId: checkout.paymentId,
+          signature: checkout.signature,
+        });
+        applyRemoteState(next);
+        return "success";
+      } catch (error) {
+        if (await confirmedByServer()) return "success";
+        throw error;
+      }
+    }
+
+    if (await confirmedByServer()) return "success";
+    if (checkout.kind === "cancelled") return "cancelled";
+    throw new Error("PAYMENT_FAILED");
+  }, [applyRemoteState, ensureClerkApiSession, isGuest, refreshRemoteState, user]);
 
   const logOut = useCallback(async () => {
     setClerkBridgePaused(true);
     try {
-      const token = sessionTokenRef.current;
-      if (token && !isClerkConfigured) {
-        await remoteLogout(token);
+      // Clear the API session and per-account data first, so nothing from this
+      // account (or a still-running Clerk exchange) leaks into the next one.
+      const token = resetAccountState();
+      if (token) {
+        // Also ends the API session created from a Clerk sign-in.
+        await remoteLogout(token).catch(() =>
+          console.warn("API logout failed; local session cleared anyway."),
+        );
       }
       if (isClerkConfigured) {
         try {
@@ -298,7 +465,7 @@ export function SaarthiProvider({ children }: { children: ReactNode }) {
     } finally {
       setClerkBridgePaused(false);
     }
-  }, []);
+  }, [resetAccountState]);
 
   const toggleSaved = useCallback(async (serviceId: string) => {
     const token = sessionTokenRef.current;

@@ -42,7 +42,7 @@ const english = {
   premiumTitle: "Unlock every government service",
   premiumSubtitle:
     "Get full access to the catalog, unlimited AI guidance, and save any service.",
-  premiumOneTime: "one-time",
+  premiumOneTime: "for 30 days",
   premiumActive: "Premium active",
   premiumIncludes: "Premium includes",
   premiumPerkAllServices: "All government services and schemes in the app",
@@ -264,6 +264,10 @@ const english = {
   profileAuthClerkFailed: "Clerk sign-in failed. Please try again.",
   profileAuthClerkVerifyEmail:
     "Check your email for Clerk’s verification link, then log in.",
+  profileAuthVerificationCode: "Email verification code",
+  profileAuthVerificationCodeHint: "Enter the code sent to your email",
+  profileAuthVerificationCodeRequired: "Enter the code from your email.",
+  profileAuthVerifyEmailCta: "Verify email",
   profileAuthDefaultName: "Sartva User",
   profileAuthShowPassword: "Show password",
   profileAuthHidePassword: "Hide password",
