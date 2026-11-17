@@ -77,16 +77,13 @@ if (!env.EXPO_PUBLIC_API_URL?.trim()) {
     `API: ${env.EXPO_PUBLIC_API_URL} (override with EXPO_PUBLIC_API_URL in artifacts/saarthi-ai/.env)`,
   );
 }
-// The Ask Assistant tab calls the AI backend (server/serve.js, `pnpm serve`)
-// directly, so it works without the api-server on port 5000.
-const AI_PORT = (env.SAARTHI_AI_PORT || "3000").trim();
-if (!env.EXPO_PUBLIC_AI_URL?.trim()) {
-  const lanIp = getLanIpv4();
-  env.EXPO_PUBLIC_AI_URL = `http://${lanIp || "127.0.0.1"}:${AI_PORT}`;
-  console.log(
-    `AI assistant: ${env.EXPO_PUBLIC_AI_URL} (start it with \`pnpm serve\`; override with EXPO_PUBLIC_AI_URL)`,
-  );
-}
+// The Ask Assistant tab calls the AI backend (server/serve.js) directly. The
+// app defaults to the deployed Render service (services/assistant.ts); set
+// EXPO_PUBLIC_AI_URL (e.g. http://<LAN-IP>:3000 after `pnpm serve`) to test a
+// local copy instead.
+console.log(
+  `AI assistant: ${env.EXPO_PUBLIC_AI_URL?.trim() || "deployed Render service (default)"} (override with EXPO_PUBLIC_AI_URL)`,
+);
 const expoArgs = extraArgs.filter((arg) => !connectionModes.includes(arg));
 // expo-dev-client is installed, so Expo would otherwise print a QR code that
 // only a development build can open. Default to Expo Go unless asked otherwise.

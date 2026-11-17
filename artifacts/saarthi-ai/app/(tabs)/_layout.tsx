@@ -1,16 +1,26 @@
 import React from "react";
-import { Platform, StyleSheet, useColorScheme, View } from "react-native";
+import {
+  type ColorValue,
+  Platform,
+  StyleSheet,
+  useColorScheme,
+  View,
+} from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import { isLiquidGlassAvailable } from "expo-glass-effect";
 import { Tabs } from "expo-router";
-import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
+import { NativeTabs } from "expo-router/unstable-native-tabs";
 import { SymbolView } from "expo-symbols";
 
 import { AuthGate } from "@/components/AuthGate";
 import { MotionProvider } from "@/components/Motion";
 import { useLanguage } from "@/context/LanguagesContext";
 import { useColors } from "@/hooks/useColors";
+
+// expo-router 58 exposes the trigger icon/label as NativeTabs.Trigger.* only.
+const Icon = NativeTabs.Trigger.Icon;
+const Label = NativeTabs.Trigger.Label;
 
 function Native() {
   const { t } = useLanguage();
@@ -59,11 +69,15 @@ function Classic() {
 
   const tab =
     (name: React.ComponentProps<typeof Feather>["name"]) =>
-    ({ color }: { color: string }) =>
+    ({ color }: { color: ColorValue }) =>
       ios ? (
         <SymbolView name={name as any} tintColor={color} size={22} />
       ) : (
-        <Feather name={name} size={21} color={color} />
+        <Feather
+          name={name}
+          size={21}
+          color={typeof color === "string" ? color : undefined}
+        />
       );
 
   return (

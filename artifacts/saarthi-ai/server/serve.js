@@ -155,6 +155,13 @@ const appName = getAppName();
 const MAX_REQUEST_BYTES = 512 * 1024;
 const MAX_QUESTION_LENGTH = 8000;
 const MAX_SERVICE_CONTEXT_LENGTH = 128_000;
+// Earlier turns of the conversation, so follow-up answers (for example the
+// user's reply to a clarifying question) keep their context.
+const MAX_HISTORY_ITEMS = 40;
+const MAX_HISTORY_TURNS = 10;
+const MAX_HISTORY_MESSAGE_LENGTH = 4_000;
+const MAX_HISTORY_TOTAL_LENGTH = 16_000;
+const HISTORY_ROLES = new Set(["user", "assistant"]);
 const OPENAI_DEFAULT_MODEL = "gpt-6.1-terra";
 const OPENAI_MODEL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const AI_TOTAL_TIMEOUT_MS = 30_000;
@@ -432,14 +439,58 @@ function reasoningEffortFor(model) {
   return /luna|terra/i.test(model) ? "none" : "low";
 }
 
-function createOpenAiRequest(model, question, serviceContext, responseLanguage) {
+// Validates the optional history field. Returns the most recent turns that fit
+// the size limits, or null when the field is malformed.
+function parseHistory(value) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > MAX_HISTORY_ITEMS) return null;
+  const turns = [];
+  for (const item of value) {
+    if (
+      typeof item !== "object" ||
+      item === null ||
+      !HISTORY_ROLES.has(item.role) ||
+      typeof item.content !== "string"
+    ) {
+      return null;
+    }
+    const content = item.content.trim().slice(0, MAX_HISTORY_MESSAGE_LENGTH);
+    if (content) turns.push({ role: item.role, content });
+  }
+  const recent = [];
+  let total = 0;
+  for (const turn of turns.slice(-MAX_HISTORY_TURNS).reverse()) {
+    if (total + turn.content.length > MAX_HISTORY_TOTAL_LENGTH) break;
+    recent.unshift(turn);
+    total += turn.content.length;
+  }
+  return recent;
+}
+
+function createOpenAiRequest(
+  model,
+  question,
+  serviceContext,
+  responseLanguage,
+  history = [],
+) {
+  // Recent user turns help pick catalog rows for short follow-ups ("Punjab").
+  const catalogQuery = [
+    ...history
+      .filter((turn) => turn.role === "user")
+      .slice(-2)
+      .map((turn) => turn.content),
+    question,
+  ].join("\n");
   return {
     model,
     instructions: createPrompt(
       responseLanguage,
-      selectServiceContext(question, serviceContext),
+      selectServiceContext(catalogQuery, serviceContext),
     ),
-    input: question,
+    input: history.length
+      ? [...history, { role: "user", content: question }]
+      : question,
     max_output_tokens: AI_MAX_OUTPUT_TOKENS,
     reasoning: { effort: reasoningEffortFor(model) },
     store: false,
@@ -592,7 +643,13 @@ function toAiRequestError(failure) {
   );
 }
 
-async function askOpenAi(question, serviceContext, responseLanguage, clientSignal) {
+async function askOpenAi(
+  question,
+  serviceContext,
+  responseLanguage,
+  clientSignal,
+  history = [],
+) {
   const apiKey = getOpenAiApiKey();
   const model = getOpenAiModel();
   const client = createOpenAiClient(apiKey);
@@ -601,6 +658,7 @@ async function askOpenAi(question, serviceContext, responseLanguage, clientSigna
     question,
     serviceContext,
     responseLanguage,
+    history,
   );
   const deadline = Date.now() + AI_TOTAL_TIMEOUT_MS;
   let lastFailure;
@@ -872,12 +930,27 @@ async function handleAssistantRequest(req, res) {
       return;
     }
 
+    const history = parseHistory(parsed.history);
+    if (history === null) {
+      sendJson(
+        req,
+        res,
+        400,
+        apiError(
+          "INVALID_HISTORY",
+          "History must be a list of user and assistant messages",
+        ),
+      );
+      return;
+    }
+
     const languageCode = parsed.language || "en";
     const answer = await askOpenAi(
       question,
       serviceContext,
       RESPONSE_LANGUAGES[languageCode],
       clientAbort.signal,
+      history,
     );
 
     sendJson(req, res, 200, { content: answer });

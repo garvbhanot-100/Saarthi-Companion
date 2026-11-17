@@ -4,7 +4,6 @@ import {
 } from "@/constants/subscription";
 import { services, type OfficialLinkType, type ServiceRecord } from "@/data/services";
 import type { LanguageCode } from "@/context/LanguagesContext";
-import Constants from "expo-constants";
 
 export interface AssistantSource {
   label: string;
@@ -22,15 +21,11 @@ export type ContentSegment =
   | { kind: "link"; text: string; url: string }
   | { kind: "unverified-link"; text: string };
 
-// The assistant talks to the AI backend (server/serve.js). EXPO_PUBLIC_AI_URL
-// points at it directly; production builds that only set EXPO_PUBLIC_API_URL
-// keep using that origin.
-const configuredApiUrl =
-  process.env.EXPO_PUBLIC_AI_URL?.trim() ||
-  process.env.EXPO_PUBLIC_API_URL?.trim();
-const expoHost = Constants.expoConfig?.hostUri?.split(":")[0];
+// The assistant talks to the AI backend (server/serve.js) deployed on Render.
+// EXPO_PUBLIC_AI_URL overrides it, for example to test a local `pnpm serve`.
+const DEFAULT_AI_URL = "https://saarthi-companion.onrender.com";
 const API_URL = (
-  configuredApiUrl || `http://${expoHost || "localhost"}:3000`
+  process.env.EXPO_PUBLIC_AI_URL?.trim() || DEFAULT_AI_URL
 ).replace(/\/+$/, "");
 
 // Absolute http(s) URL with a plain hostname: no credentials, whitespace,
@@ -245,12 +240,29 @@ function findSources(question: string, content: string): AssistantSource[] {
   return [...new Set([...cited, ...matched])].slice(0, 3).map(toSource);
 }
 
+export interface AssistantTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+// Matches the AI server's limits (server/serve.js); it keeps the newest turns.
+const MAX_HISTORY_TURNS = 10;
+const MAX_HISTORY_MESSAGE_CHARS = 4_000;
+
 export async function getAssistantReply(
   question: string,
   language: LanguageCode,
   plan: UserPlan = "premium",
+  history: AssistantTurn[] = [],
 ): Promise<AssistantReply> {
   const serviceContext = buildServiceContext(question, plan);
+  const recentHistory = history
+    .filter((turn) => turn.content.trim())
+    .slice(-MAX_HISTORY_TURNS)
+    .map(({ role, content }) => ({
+      role,
+      content: content.slice(0, MAX_HISTORY_MESSAGE_CHARS),
+    }));
 
   let response: Response;
   const controller = new AbortController();
@@ -266,6 +278,7 @@ export async function getAssistantReply(
         question,
         serviceContext,
         language,
+        ...(recentHistory.length ? { history: recentHistory } : {}),
       }),
       signal: controller.signal,
     });
@@ -288,14 +301,18 @@ export async function getAssistantReply(
   }
 
   if (!response.ok) {
-    // Surface the backend's error code (never a secret) for diagnosis.
-    const error =
+    const backendError =
       typeof data === "object" && data !== null && "error" in data
-        ? (data as { error?: { code?: unknown } }).error
+        ? (data as { error?: { code?: unknown; message?: unknown } }).error
         : undefined;
-    const code = typeof error?.code === "string" ? error.code : "UNKNOWN";
+    const code =
+      typeof backendError?.code === "string" ? backendError.code : "UNKNOWN";
+    const message =
+      typeof backendError?.message === "string"
+        ? backendError.message.slice(0, 500)
+        : "";
     throw new Error(
-      `The assistant service could not complete the request (HTTP ${response.status}, ${code}).`,
+      `The assistant service could not complete the request (HTTP ${response.status}, ${code})${message ? `: ${message}` : "."}`,
     );
   }
 

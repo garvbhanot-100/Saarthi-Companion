@@ -267,7 +267,7 @@ export default function Ask() {
     [chats, sid],
   );
 
-  const input = useRef<TextInput>(null);
+  const input = useRef<React.ComponentRef<typeof TextInput>>(null);
   const hasMessages = Boolean(session?.messages.length) || sending;
 
   useSpeechEvent("start", () => {
@@ -304,6 +304,16 @@ export default function Ask() {
 
     if (!hydrated || !question || sendingRef.current || !sid) return;
 
+    // Earlier turns of this chat (before this question) give follow-ups context.
+    const history = (session?.messages ?? []).filter(
+      (message) => !message.isError,
+    );
+    if (retryMessageId) {
+      // The retried question is already in the chat; send it as the question.
+      const lastUser = history.map((message) => message.role).lastIndexOf("user");
+      if (lastUser >= 0) history.splice(lastUser);
+    }
+
     sendingRef.current = true;
     if (retryMessageId) {
       removeMessage(sid, retryMessageId);
@@ -326,6 +336,7 @@ export default function Ask() {
         question,
         language,
         isPremium ? "premium" : "free",
+        history.map(({ role, content }) => ({ role, content })),
       );
 
       appendMessage(sid, {
@@ -334,6 +345,8 @@ export default function Ask() {
         sources: response.sources,
       });
     } catch (error) {
+      // Technical detail stays in the log; the chat (which is saved and
+      // synced) shows the localized message.
       console.warn("Assistant request failed:", error);
       appendMessage(sid, {
         role: "assistant",
@@ -530,7 +543,7 @@ export default function Ask() {
                     </Text>
                   </View>
                 </View>
-              ) : null
+              ) : undefined
             }
           />
         )}

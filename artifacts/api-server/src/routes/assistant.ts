@@ -161,6 +161,8 @@ router.post("/assistant", async (req: Request, res: Response) => {
           ? { serviceContext: body.serviceContext }
           : {}),
         ...(body.language !== undefined ? { language: body.language } : {}),
+        // Validated by the AI service (conversation turns for follow-ups).
+        ...(Array.isArray(body.history) ? { history: body.history } : {}),
       }),
       signal: controller.signal,
     });
@@ -187,6 +189,7 @@ router.post("/assistant", async (req: Request, res: Response) => {
         typeof error.message === "string"
           ? error.message
               .replace(/\bgsk_[A-Za-z0-9]{20,}\b/g, "[redacted]")
+              .replace(/\bsk-[0-9A-Za-z_-]{20,}/g, "[redacted]")
               .replace(/\s+/g, " ")
               .slice(0, 500)
           : "The AI service could not complete the request.";

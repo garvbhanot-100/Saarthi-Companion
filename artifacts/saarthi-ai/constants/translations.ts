@@ -258,7 +258,6 @@ const english = {
   profileAuthBenefitChats: "Chats saved across devices",
   profileAuthBenefitSecure: "One-tap secure Google sign-in",
   profileAuthLoginWithGoogleFirst: "Fastest — continue with Google",
-  profileAuthEmailSignIn: "Or sign in with email",
   profileAuthContinueClerkSignIn: "Sign in with Clerk",
   profileAuthContinueClerkSignUp: "Sign up with Clerk",
   profileAuthClerkFailed: "Clerk sign-in failed. Please try again.",

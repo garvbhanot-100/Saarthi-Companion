@@ -408,6 +408,15 @@ export default function Home() {
               {t("privacyNotice")}
             </Text>
           </View>
+
+          <View style={styles.credit}>
+            <Text style={[styles.creditName, { color: c.foreground }]}>
+              Founded by Garv Bhanot
+            </Text>
+            <Text style={[styles.creditCollege, { color: c.mutedForeground }]}>
+              SGT University
+            </Text>
+          </View>
         </View>
       </ScrollView>
     </FadeInView>
@@ -648,5 +657,18 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 16,
     flex: 1,
+  },
+  credit: {
+    alignItems: "center",
+    marginTop: 20,
+    gap: 2,
+  },
+  creditName: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 12,
+  },
+  creditCollege: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
   },
 });

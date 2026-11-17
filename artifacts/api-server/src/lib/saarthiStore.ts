@@ -1,7 +1,24 @@
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import {
+  createHash,
+  randomBytes,
+  randomUUID,
+  scrypt as scryptCallback,
+  timingSafeEqual,
+} from "node:crypto";
+import { promisify } from "node:util";
 import { prisma, type Prisma } from "@workspace/db";
 
 const SESSION_DAYS = 30;
+
+/** An expected failure whose code is safe to return to the client. */
+export class StoreError extends Error {
+  constructor(
+    public readonly code: string,
+    public readonly status = 400,
+  ) {
+    super(code);
+  }
+}
 
 export type UserProfileDto = { name: string; email: string };
 
@@ -45,8 +62,40 @@ export function planFromExpiry(
     : "free";
 }
 
-function hashPassword(salt: string, password: string) {
+const scrypt = promisify(scryptCallback) as (
+  password: string,
+  salt: string,
+  keyLength: number,
+) => Promise<Buffer>;
+const SCRYPT_PREFIX = "scrypt:";
+const SCRYPT_KEY_LENGTH = 64;
+
+async function hashPassword(salt: string, password: string) {
+  const key = await scrypt(password, salt, SCRYPT_KEY_LENGTH);
+  return SCRYPT_PREFIX + key.toString("hex");
+}
+
+/** Accounts created before scrypt store a single salted SHA-256 hash. */
+function legacyHashPassword(salt: string, password: string) {
   return createHash("sha256").update(`${salt}:${password}`).digest("hex");
+}
+
+function safeEqual(a: string, b: string) {
+  const left = Buffer.from(a, "utf8");
+  const right = Buffer.from(b, "utf8");
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
+async function verifyPassword(
+  cred: { salt: string; passwordHash: string },
+  password: string,
+): Promise<{ ok: boolean; needsUpgrade: boolean }> {
+  if (cred.passwordHash.startsWith(SCRYPT_PREFIX)) {
+    const hash = await hashPassword(cred.salt, password);
+    return { ok: safeEqual(hash, cred.passwordHash), needsUpgrade: false };
+  }
+  const ok = safeEqual(legacyHashPassword(cred.salt, password), cred.passwordHash);
+  return { ok, needsUpgrade: ok };
 }
 
 function normalizeEmail(email: string) {
@@ -155,28 +204,23 @@ export async function signUpUser(
   const email = normalizeEmail(profile.email);
   const name = profile.name.trim();
   if (!name || !email.includes("@")) {
-    throw new Error("INVALID_PROFILE");
+    throw new StoreError("INVALID_PROFILE");
   }
   const existing = await prisma.saarthiUser.findUnique({ where: { email } });
   if (existing) {
-    throw new Error("EMAIL_TAKEN");
+    throw new StoreError("EMAIL_TAKEN", 409);
   }
 
   const salt = password ? randomUUID() : null;
+  const passwordHash =
+    salt && password ? await hashPassword(salt, password) : null;
   const user = await prisma.saarthiUser.create({
     data: {
       email,
       name,
       lastLoginAt: new Date(),
-      ...(salt && password
-        ? {
-            credential: {
-              create: {
-                salt,
-                passwordHash: hashPassword(salt, password),
-              },
-            },
-          }
+      ...(salt && passwordHash
+        ? { credential: { create: { salt, passwordHash } } }
         : {}),
     },
   });
@@ -202,8 +246,15 @@ export async function loginUser(
   });
   if (!cred) return null;
 
-  const passwordHash = hashPassword(cred.salt, password);
-  if (passwordHash !== cred.passwordHash) return null;
+  const { ok, needsUpgrade } = await verifyPassword(cred, password);
+  if (!ok) return null;
+  if (needsUpgrade) {
+    const salt = randomUUID();
+    await prisma.saarthiCredential.update({
+      where: { userId: user.id },
+      data: { salt, passwordHash: await hashPassword(salt, password) },
+    });
+  }
 
   await prisma.saarthiUser.update({
     where: { id: user.id },
@@ -240,16 +291,23 @@ export async function loginVerifiedEmailUser(
   return { token, state };
 }
 
-export async function updateUserProfile(userId: string, profile: UserProfileDto) {
+export async function updateUserProfile(
+  userId: string,
+  profile: UserProfileDto,
+  options: { allowEmailChange: boolean } = { allowEmailChange: true },
+) {
   const email = normalizeEmail(profile.email);
   const name = profile.name.trim();
   if (!name || !email.includes("@")) {
-    throw new Error("INVALID_PROFILE");
+    throw new StoreError("INVALID_PROFILE");
   }
 
   const conflict = await prisma.saarthiUser.findUnique({ where: { email } });
   if (conflict && conflict.id !== userId) {
-    throw new Error("EMAIL_TAKEN");
+    throw new StoreError("EMAIL_TAKEN", 409);
+  }
+  if (!options.allowEmailChange && conflict?.id !== userId) {
+    throw new StoreError("EMAIL_CHANGE_NOT_ALLOWED", 403);
   }
 
   await prisma.saarthiUser.update({
@@ -267,7 +325,10 @@ export async function replaceSavedServices(
     ...(serviceIds.length > 0
       ? [
           prisma.saarthiSavedService.createMany({
-            data: serviceIds.map((serviceId) => ({ userId, serviceId })),
+            data: [...new Set(serviceIds)].map((serviceId) => ({
+              userId,
+              serviceId,
+            })),
           }),
         ]
       : []),

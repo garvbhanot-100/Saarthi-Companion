@@ -1,12 +1,14 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 
 import type { UserPlan } from "@/constants/subscription";
 import type { ChatSession, UserProfile } from "@/context/SaarthiContext";
 
 const SESSION_KEY = "@saarthi/session-token";
 const SECURE_SESSION_KEY = "saarthi-session-token";
+// Cross-device sync cadence while the app is in the foreground.
+const POLL_INTERVAL_MS = 10_000;
 
 function apiBase() {
   const url = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, "");
@@ -110,12 +112,13 @@ export async function remoteSignUp(profile: UserProfile, password?: string) {
   });
   const token = data.token as string;
   await saveSessionToken(token);
+  const state = data.state as Record<string, unknown>;
   return {
     sessionToken: token,
-    user: data.state.user as UserProfile,
-    plan: parsePlan(data.state.plan),
-    savedServiceIds: data.state.savedServiceIds as string[],
-    chats: data.state.chats as ChatSession[],
+    user: state.user as UserProfile,
+    plan: parsePlan(state.plan),
+    savedServiceIds: state.savedServiceIds as string[],
+    chats: state.chats as ChatSession[],
   };
 }
 
@@ -130,12 +133,13 @@ export async function remoteLogin(
   });
   const token = data.token as string;
   await saveSessionToken(token);
+  const state = data.state as Record<string, unknown>;
   return {
     sessionToken: token,
-    user: data.state.user as UserProfile,
-    plan: parsePlan(data.state.plan),
-    savedServiceIds: data.state.savedServiceIds as string[],
-    chats: data.state.chats as ChatSession[],
+    user: state.user as UserProfile,
+    plan: parsePlan(state.plan),
+    savedServiceIds: state.savedServiceIds as string[],
+    chats: state.chats as ChatSession[],
   };
 }
 
@@ -295,22 +299,33 @@ export function subscribeRemoteStatePolling(
   onState: (state: Omit<RemoteUserState, "sessionToken">) => void,
 ) {
   let cancelled = false;
+  let inFlight = false;
   const tick = async () => {
-    if (cancelled) return;
-    const fresh = await remoteFetchState(sessionToken);
-    if (fresh && !cancelled) {
-      onState({
-        user: fresh.user,
-        plan: fresh.plan,
-        savedServiceIds: fresh.savedServiceIds,
-        chats: fresh.chats,
-      });
+    // Skip while backgrounded or while the previous request is still running.
+    if (cancelled || inFlight || AppState.currentState !== "active") return;
+    inFlight = true;
+    try {
+      const fresh = await remoteFetchState(sessionToken);
+      if (fresh && !cancelled) {
+        onState({
+          user: fresh.user,
+          plan: fresh.plan,
+          savedServiceIds: fresh.savedServiceIds,
+          chats: fresh.chats,
+        });
+      }
+    } finally {
+      inFlight = false;
     }
   };
   void tick();
-  const interval = setInterval(() => void tick(), 3500);
+  const interval = setInterval(() => void tick(), POLL_INTERVAL_MS);
+  const appState = AppState.addEventListener("change", (state) => {
+    if (state === "active") void tick();
+  });
   return () => {
     cancelled = true;
     clearInterval(interval);
+    appState.remove();
   };
 }

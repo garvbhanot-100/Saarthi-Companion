@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import type { Request } from "express";
 import { resolveAdminEmailFromClerkToken } from "./clerkAdminAuth";
 
@@ -71,5 +72,7 @@ export async function adminRequestAuthorized(req: Request): Promise<boolean> {
   const secret = (headerSecret || querySecret).trim();
 
   if (!allowedEmails.includes(email)) return false;
-  return secret === expectedSecret;
+  const given = Buffer.from(secret, "utf8");
+  const expected = Buffer.from(expectedSecret, "utf8");
+  return given.length === expected.length && timingSafeEqual(given, expected);
 }

@@ -201,10 +201,27 @@ export function SaarthiProvider({ children }: { children: ReactNode }) {
     };
   }, [applyRemoteState]);
 
+  // Local edits not yet confirmed by the server. Polled/streamed state that
+  // arrives meanwhile may predate them, so it must not overwrite them.
+  const pendingSyncRef = useRef(0);
+  const lastLocalChangeRef = useRef(0);
+  const applySubscribedState = useCallback(
+    (state: Parameters<typeof applyRemoteState>[0]) => {
+      if (
+        pendingSyncRef.current > 0 ||
+        Date.now() - lastLocalChangeRef.current < 4_000
+      ) {
+        return;
+      }
+      applyRemoteState(state);
+    },
+    [applyRemoteState],
+  );
+
   useEffect(() => {
     if (!sessionToken) return undefined;
-    return subscribeRemoteState(sessionToken, applyRemoteState);
-  }, [sessionToken, applyRemoteState]);
+    return subscribeRemoteState(sessionToken, applySubscribedState);
+  }, [sessionToken, applySubscribedState]);
 
   const signUp = useCallback(async (profile: UserProfile, password?: string) => {
     const result = await remoteSignUp(profile, password);
@@ -478,21 +495,54 @@ export function SaarthiProvider({ children }: { children: ReactNode }) {
         : [...current, serviceId];
       return next;
     });
+    lastLocalChangeRef.current = Date.now();
+    pendingSyncRef.current += 1;
     try {
       await remotePushSaved(token, next);
     } catch (error) {
       console.error("Could not sync saved services:", error);
+    } finally {
+      pendingSyncRef.current -= 1;
+      lastLocalChangeRef.current = Date.now();
     }
   }, [plan]);
 
-  const persistChats = useCallback(async (next: ChatSession[]) => {
+  // Each push replaces all chats on the server, so pushes run one at a time
+  // and only the newest snapshot is sent; otherwise an older request finishing
+  // last could overwrite newer messages.
+  const chatPushRef = useRef<{
+    running: boolean;
+    next: { token: string; chats: ChatSession[] } | null;
+  }>({ running: false, next: null });
+
+  const persistChats = useCallback((next: ChatSession[]) => {
     const token = sessionTokenRef.current;
     if (!token) return;
-    try {
-      await remotePushChats(token, next);
-    } catch (error) {
-      console.error("Could not sync chats:", error);
-    }
+    lastLocalChangeRef.current = Date.now();
+    const queue = chatPushRef.current;
+    queue.next = { token, chats: next };
+    if (queue.running) return;
+    queue.running = true;
+    pendingSyncRef.current += 1;
+    void (async () => {
+      try {
+        while (queue.next) {
+          const job = queue.next;
+          queue.next = null;
+          // Never push one account's chats with another account's session.
+          if (sessionTokenRef.current !== job.token) continue;
+          try {
+            await remotePushChats(job.token, job.chats);
+          } catch (error) {
+            console.error("Could not sync chats:", error);
+          }
+        }
+      } finally {
+        queue.running = false;
+        pendingSyncRef.current -= 1;
+        lastLocalChangeRef.current = Date.now();
+      }
+    })();
   }, []);
 
   const startNewChat = useCallback(() => {
